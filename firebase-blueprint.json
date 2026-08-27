@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "station": {
+      "title": "Station",
+      "description": "A 110kV station",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "feedersCount": { "type": "number" },
+        "loopsCount": { "type": "number" }
+      },
+      "required": ["id", "name", "code"]
+    },
+    "feeder": {
+      "title": "Feeder",
+      "description": "An electrical feeder",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "stationId": { "type": "string" }
+      },
+      "required": ["id", "name", "stationId"]
+    },
+    "device": {
+      "title": "Device",
+      "description": "A network device",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "feederId": { "type": "string" }
+      },
+      "required": ["id", "name", "feederId"]
+    },
+    "loop": {
+      "title": "Loop",
+      "description": "A loop connection",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "deviceAId": { "type": "string" },
+        "deviceBId": { "type": "string" }
+      },
+      "required": ["id", "name", "deviceAId", "deviceBId"]
+    }
+  },
+  "firestore": {
+    "/stations/{stationId}": {
+      "schema": "station",
+      "description": "Stations collection"
+    },
+    "/feeders/{feederId}": {
+      "schema": "feeder",
+      "description": "Feeders collection"
+    },
+    "/devices/{deviceId}": {
+      "schema": "device",
+      "description": "Devices collection"
+    },
+    "/loops/{loopId}": {
+      "schema": "loop",
+      "description": "Loop connections collection"
+    }
+  }
+}

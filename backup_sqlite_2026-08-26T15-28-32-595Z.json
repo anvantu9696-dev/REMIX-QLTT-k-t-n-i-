@@ -1,0 +1,2157 @@
+{
+  "roles": [
+    {
+      "id": 1,
+      "code": "ADMIN",
+      "name": "Quản trị hệ thống",
+      "description": "Toàn quyền quản trị tài khoản, phân quyền, cấu hình và giám sát hệ thống.",
+      "level": 1,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 2,
+      "code": "CAN_BO_PHUONG_THUC",
+      "name": "Cán bộ phương thức",
+      "description": "Quản lý phương thức vận hành, duyệt sơ đồ, chỉ đạo kết lưới.",
+      "level": 2,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 3,
+      "code": "TRUONG_CA",
+      "name": "Trưởng ca điều hành",
+      "description": "Chỉ huy ca vận hành trạm/phát tuyến, phân công việc, duyệt phiếu thao tác.",
+      "level": 3,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 4,
+      "code": "PHO_CA",
+      "name": "Phó ca điều hành",
+      "description": "Hỗ trợ trưởng ca, kiểm tra giám sát thông số thiết bị và nhật ký ca.",
+      "level": 4,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 5,
+      "code": "DOI_TRUONG",
+      "name": "Đội trưởng quản lý vận hành",
+      "description": "Quản lý đội, phân công nhân viên kiểm tra, xử lý sự cố địa bàn.",
+      "level": 5,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 6,
+      "code": "NHAN_VIEN_VAN_HANH",
+      "name": "Nhân viên vận hành",
+      "description": "Thực hiện kiểm tra định kỳ, ghi nhận thông số thiết bị, cập nhật bất thường.",
+      "level": 6,
+      "status": "INACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 7,
+      "code": "FIELD_OPERATOR",
+      "name": "Nhân viên hiện trường",
+      "description": "Thường xuyên đi hiện trường, thu thập thông tin thực tế, cập nhật vị trí, chụp ảnh và ghi nhận tình trạng.",
+      "level": 8,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 8,
+      "code": "KHACH",
+      "name": "KHÁCH - CHỈ XEM",
+      "description": "Quyền chỉ xem (Read-only) các báo cáo, tài liệu và sơ đồ công khai.",
+      "level": 7,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "permissions": [
+    {
+      "id": 1,
+      "code": "users:approve",
+      "module": "QUAN_LY_NGUOI_DUNG",
+      "description": "Phê duyệt / Từ chối kích hoạt tài khoản đăng ký mới",
+      "action": "APPROVE"
+    },
+    {
+      "id": 2,
+      "code": "users:read",
+      "module": "QUAN_LY_NGUOI_DUNG",
+      "description": "Xem danh sách & thông tin người dùng",
+      "action": "READ"
+    },
+    {
+      "id": 3,
+      "code": "users:create",
+      "module": "QUAN_LY_NGUOI_DUNG",
+      "description": "Tạo tài khoản người dùng mới",
+      "action": "CREATE"
+    },
+    {
+      "id": 4,
+      "code": "users:update",
+      "module": "QUAN_LY_NGUOI_DUNG",
+      "description": "Cập nhật thông tin người dùng",
+      "action": "UPDATE"
+    },
+    {
+      "id": 5,
+      "code": "users:delete",
+      "module": "QUAN_LY_NGUOI_DUNG",
+      "description": "Xóa (Soft delete) người dùng",
+      "action": "DELETE"
+    },
+    {
+      "id": 6,
+      "code": "users:assign_role",
+      "module": "QUAN_LY_NGUOI_DUNG",
+      "description": "Gán Vai trò và Scope cho người dùng",
+      "action": "ASSIGN"
+    },
+    {
+      "id": 7,
+      "code": "users:lock",
+      "module": "QUAN_LY_NGUOI_DUNG",
+      "description": "Khóa / Mở khóa / Vô hiệu hóa tài khoản",
+      "action": "LOCK"
+    },
+    {
+      "id": 8,
+      "code": "equipment:read",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Xem thông tin danh mục thiết bị lưới điện",
+      "action": "READ"
+    },
+    {
+      "id": 9,
+      "code": "equipment:create",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Thêm mới thiết bị lưới điện",
+      "action": "CREATE"
+    },
+    {
+      "id": 10,
+      "code": "equipment:update",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Cập nhật thông số thiết bị",
+      "action": "UPDATE"
+    },
+    {
+      "id": 11,
+      "code": "equipment:delete",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Xóa thiết bị khỏi hệ thống",
+      "action": "DELETE"
+    },
+    {
+      "id": 12,
+      "code": "DEVICE_VIEW",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Tra cứu thiết bị",
+      "action": "READ"
+    },
+    {
+      "id": 13,
+      "code": "GIS_VIEW",
+      "module": "GIS",
+      "description": "Xem bản đồ GIS",
+      "action": "READ"
+    },
+    {
+      "id": 14,
+      "code": "LOOP_VIEW",
+      "module": "KHEP_VONG",
+      "description": "Xem sơ đồ khép vòng",
+      "action": "READ"
+    },
+    {
+      "id": 15,
+      "code": "FEEDER_VIEW",
+      "module": "PHAT_TUYEN",
+      "description": "Tra cứu phát tuyến",
+      "action": "READ"
+    },
+    {
+      "id": 16,
+      "code": "SUBSTATION_VIEW",
+      "module": "TRAM_110KV",
+      "description": "Tra cứu trạm 110kV",
+      "action": "READ"
+    },
+    {
+      "id": 17,
+      "code": "DEVICE_PROPOSE_CREATE",
+      "module": "DE_XUAT",
+      "description": "Đề xuất thêm thiết bị mới",
+      "action": "CREATE"
+    },
+    {
+      "id": 18,
+      "code": "DEVICE_PROPOSE_UPDATE",
+      "module": "DE_XUAT",
+      "description": "Đề xuất cập nhật thiết bị",
+      "action": "UPDATE"
+    },
+    {
+      "id": 19,
+      "code": "DEVICE_PROPOSE_DELETE",
+      "module": "DE_XUAT",
+      "description": "Đề xuất xóa thiết bị",
+      "action": "DELETE"
+    },
+    {
+      "id": 20,
+      "code": "DEVICE_PROPOSE_LOCATION_UPDATE",
+      "module": "DE_XUAT",
+      "description": "Đề xuất cập nhật vị trí thiết bị",
+      "action": "UPDATE"
+    },
+    {
+      "id": 21,
+      "code": "DEVICE_PROPOSE_STATUS_UPDATE",
+      "module": "DE_XUAT",
+      "description": "Đề xuất cập nhật trạng thái làm việc",
+      "action": "UPDATE"
+    },
+    {
+      "id": 22,
+      "code": "DEVICE_IMAGE_UPLOAD",
+      "module": "HINH_ANH",
+      "description": "Chụp ảnh và upload hình ảnh hiện trường",
+      "action": "CREATE"
+    },
+    {
+      "id": 23,
+      "code": "CHANGE_REQUEST_CREATE",
+      "module": "DE_XUAT",
+      "description": "Tạo Change Request",
+      "action": "CREATE"
+    },
+    {
+      "id": 24,
+      "code": "CHANGE_REQUEST_VIEW",
+      "module": "DE_XUAT",
+      "description": "Xem đề xuất của tôi",
+      "action": "READ"
+    },
+    {
+      "id": 25,
+      "code": "tasks:read",
+      "module": "CONG_VIEC",
+      "description": "Xem danh sách công việc vận hành",
+      "action": "READ"
+    },
+    {
+      "id": 26,
+      "code": "tasks:create",
+      "module": "CONG_VIEC",
+      "description": "Tạo mới công việc / phiếu giao việc",
+      "action": "CREATE"
+    },
+    {
+      "id": 27,
+      "code": "tasks:update",
+      "module": "CONG_VIEC",
+      "description": "Cập nhật tiến độ / duyệt công việc",
+      "action": "UPDATE"
+    },
+    {
+      "id": 28,
+      "code": "audit:read",
+      "module": "AUDIT_LOG",
+      "description": "Xem nhật ký hệ thống (Audit logs)",
+      "action": "READ"
+    },
+    {
+      "id": 29,
+      "code": "documents:read",
+      "module": "TAI_LIEU",
+      "description": "Xem quy trình, tài liệu kỹ thuật",
+      "action": "READ"
+    },
+    {
+      "id": 30,
+      "code": "documents:create",
+      "module": "TAI_LIEU",
+      "description": "Tải lên tài liệu mới",
+      "action": "CREATE"
+    },
+    {
+      "id": 31,
+      "code": "reports:read",
+      "module": "BAO_CAO",
+      "description": "Xem các báo cáo thống kê",
+      "action": "READ"
+    },
+    {
+      "id": 32,
+      "code": "GRID_DATA_IMPORT",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "IMPORT DỮ LIỆU LƯỚI ĐIỆN",
+      "action": "CREATE"
+    },
+    {
+      "id": 33,
+      "code": "devices:import",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Nhập dữ liệu thiết bị",
+      "action": "CREATE"
+    },
+    {
+      "id": 34,
+      "code": "devices:export",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Xuất dữ liệu thiết bị",
+      "action": "READ"
+    },
+    {
+      "id": 35,
+      "code": "substations:import",
+      "module": "TRAM_110KV",
+      "description": "Nhập dữ liệu trạm 110kV",
+      "action": "CREATE"
+    },
+    {
+      "id": 36,
+      "code": "substations:export",
+      "module": "TRAM_110KV",
+      "description": "Xuất dữ liệu trạm 110kV",
+      "action": "READ"
+    },
+    {
+      "id": 37,
+      "code": "feeders:import",
+      "module": "PHAT_TUYEN",
+      "description": "Nhập dữ liệu phát tuyến",
+      "action": "CREATE"
+    },
+    {
+      "id": 38,
+      "code": "feeders:export",
+      "module": "PHAT_TUYEN",
+      "description": "Xuất dữ liệu phát tuyến",
+      "action": "READ"
+    },
+    {
+      "id": 39,
+      "code": "loops:import",
+      "module": "KHEP_VONG",
+      "description": "Nhập dữ liệu khép vòng",
+      "action": "CREATE"
+    },
+    {
+      "id": 40,
+      "code": "loops:export",
+      "module": "KHEP_VONG",
+      "description": "Xuất dữ liệu khép vòng",
+      "action": "READ"
+    },
+    {
+      "id": 41,
+      "code": "proposals:create",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Tạo đề xuất thay đổi/thêm/sửa/xóa thiết bị",
+      "action": "CREATE"
+    },
+    {
+      "id": 42,
+      "code": "proposals:read",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Xem danh sách đề xuất thay đổi thiết bị",
+      "action": "READ"
+    },
+    {
+      "id": 43,
+      "code": "proposals:review",
+      "module": "QUAN_LY_THIET_BI",
+      "description": "Phê duyệt hoặc từ chối đề xuất thiết bị",
+      "action": "UPDATE"
+    },
+    {
+      "id": 44,
+      "code": "PERIODIC_INSPECTION_DELETE",
+      "module": "KIEM_TRA_DINH_KY",
+      "description": "XÓA LỊCH KIỂM TRA ĐỊNH KỲ",
+      "action": "DELETE"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "employee_code": "NV-00001",
+      "full_name": "Nguyễn Văn Admin",
+      "username": "admin",
+      "email": "admin@luoidien.evn.vn",
+      "phone": "0901234567",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI QLVH",
+      "title": "Quản trị viên Hệ thống",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$Xb2WORYqfK0rbMQS1jmuBOIwJMQu2isp1M7P2iR76VLbsDyC2Af86",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 2,
+      "employee_code": "NV-00002",
+      "full_name": "Trần Thị Phương Thức",
+      "username": "cb_phuongthuc",
+      "email": "phuongthuc@luoidien.evn.vn",
+      "phone": "0902345678",
+      "unit": "Điện lực Bình Dương",
+      "team": "Phòng Phương thức Vận hành",
+      "title": "Chuyên viên Phương thức",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 3,
+      "employee_code": "NV-00003",
+      "full_name": "Lê Văn Trưởng Ca",
+      "username": "truongca_a",
+      "email": "truongca@luoidien.evn.vn",
+      "phone": "0903456789",
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Vận hành Lưới điện",
+      "title": "Trưởng ca Điều hành",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 4,
+      "employee_code": "NV-00004",
+      "full_name": "Phạm Văn Phó Ca",
+      "username": "phoca_a",
+      "email": "phoca@luoidien.evn.vn",
+      "phone": "0904567890",
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Vận hành Lưới điện",
+      "title": "Phó ca Điều hành",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 5,
+      "employee_code": "NV-00005",
+      "full_name": "Hoàng Văn Đội Trưởng",
+      "username": "doitruong_1",
+      "email": "doitruong@luoidien.evn.vn",
+      "phone": "0905678901",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "title": "Đội trưởng QLVH",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 6,
+      "employee_code": "NV-00006",
+      "full_name": "Đỗ Văn Vận Hành",
+      "username": "nv_vanhanh",
+      "email": "vanhanh@luoidien.evn.vn",
+      "phone": "0906789012",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "title": "Kỹ thuật viên Vận hành",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 7,
+      "employee_code": "NV-00007",
+      "full_name": "Nguyễn Văn Khách",
+      "username": "khach_guest",
+      "email": "khach@luoidien.evn.vn",
+      "phone": "0907890123",
+      "unit": "Sở Công Thương",
+      "team": "Đoàn Giám sát",
+      "title": "Cán bộ Giám sát",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 8,
+      "employee_code": "NV-00008",
+      "full_name": "Bùi Văn Hiện Trường",
+      "username": "nhanvien_hientruong",
+      "email": "hientruong@luoidien.evn.vn",
+      "phone": "0908901234",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "title": "Nhân viên Hiện trường",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    },
+    {
+      "id": 9,
+      "employee_code": "NV-00009",
+      "full_name": "Nhân viên hiện trường Test",
+      "username": "field.test",
+      "email": "field.test@example.local",
+      "phone": "0909999888",
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Quản lý Vận hành Test",
+      "title": "Nhân viên Hiện trường Test",
+      "status": "ACTIVE",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null,
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejected_at": null,
+      "rejection_reason": null
+    }
+  ],
+  "user_roles": [
+    {
+      "user_id": 1,
+      "role_id": 1,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 2,
+      "role_id": 2,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 3,
+      "role_id": 3,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 4,
+      "role_id": 4,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 5,
+      "role_id": 5,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 6,
+      "role_id": 6,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 7,
+      "role_id": 8,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 8,
+      "role_id": 7,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "user_id": 9,
+      "role_id": 7,
+      "created_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "role_permissions": [
+    {
+      "role_id": 1,
+      "permission_id": 23
+    },
+    {
+      "role_id": 1,
+      "permission_id": 24
+    },
+    {
+      "role_id": 1,
+      "permission_id": 22
+    },
+    {
+      "role_id": 1,
+      "permission_id": 17
+    },
+    {
+      "role_id": 1,
+      "permission_id": 19
+    },
+    {
+      "role_id": 1,
+      "permission_id": 20
+    },
+    {
+      "role_id": 1,
+      "permission_id": 21
+    },
+    {
+      "role_id": 1,
+      "permission_id": 18
+    },
+    {
+      "role_id": 1,
+      "permission_id": 12
+    },
+    {
+      "role_id": 1,
+      "permission_id": 15
+    },
+    {
+      "role_id": 1,
+      "permission_id": 13
+    },
+    {
+      "role_id": 1,
+      "permission_id": 32
+    },
+    {
+      "role_id": 1,
+      "permission_id": 14
+    },
+    {
+      "role_id": 1,
+      "permission_id": 16
+    },
+    {
+      "role_id": 1,
+      "permission_id": 28
+    },
+    {
+      "role_id": 1,
+      "permission_id": 34
+    },
+    {
+      "role_id": 1,
+      "permission_id": 33
+    },
+    {
+      "role_id": 1,
+      "permission_id": 30
+    },
+    {
+      "role_id": 1,
+      "permission_id": 29
+    },
+    {
+      "role_id": 1,
+      "permission_id": 9
+    },
+    {
+      "role_id": 1,
+      "permission_id": 11
+    },
+    {
+      "role_id": 1,
+      "permission_id": 8
+    },
+    {
+      "role_id": 1,
+      "permission_id": 10
+    },
+    {
+      "role_id": 1,
+      "permission_id": 38
+    },
+    {
+      "role_id": 1,
+      "permission_id": 37
+    },
+    {
+      "role_id": 1,
+      "permission_id": 40
+    },
+    {
+      "role_id": 1,
+      "permission_id": 39
+    },
+    {
+      "role_id": 1,
+      "permission_id": 31
+    },
+    {
+      "role_id": 1,
+      "permission_id": 36
+    },
+    {
+      "role_id": 1,
+      "permission_id": 35
+    },
+    {
+      "role_id": 1,
+      "permission_id": 26
+    },
+    {
+      "role_id": 1,
+      "permission_id": 25
+    },
+    {
+      "role_id": 1,
+      "permission_id": 27
+    },
+    {
+      "role_id": 1,
+      "permission_id": 1
+    },
+    {
+      "role_id": 1,
+      "permission_id": 6
+    },
+    {
+      "role_id": 1,
+      "permission_id": 3
+    },
+    {
+      "role_id": 1,
+      "permission_id": 5
+    },
+    {
+      "role_id": 1,
+      "permission_id": 7
+    },
+    {
+      "role_id": 1,
+      "permission_id": 2
+    },
+    {
+      "role_id": 1,
+      "permission_id": 4
+    },
+    {
+      "role_id": 2,
+      "permission_id": 8
+    },
+    {
+      "role_id": 2,
+      "permission_id": 9
+    },
+    {
+      "role_id": 2,
+      "permission_id": 10
+    },
+    {
+      "role_id": 2,
+      "permission_id": 25
+    },
+    {
+      "role_id": 2,
+      "permission_id": 26
+    },
+    {
+      "role_id": 2,
+      "permission_id": 27
+    },
+    {
+      "role_id": 2,
+      "permission_id": 29
+    },
+    {
+      "role_id": 2,
+      "permission_id": 30
+    },
+    {
+      "role_id": 2,
+      "permission_id": 31
+    },
+    {
+      "role_id": 2,
+      "permission_id": 28
+    },
+    {
+      "role_id": 2,
+      "permission_id": 12
+    },
+    {
+      "role_id": 2,
+      "permission_id": 13
+    },
+    {
+      "role_id": 2,
+      "permission_id": 14
+    },
+    {
+      "role_id": 2,
+      "permission_id": 15
+    },
+    {
+      "role_id": 2,
+      "permission_id": 16
+    },
+    {
+      "role_id": 2,
+      "permission_id": 24
+    },
+    {
+      "role_id": 3,
+      "permission_id": 8
+    },
+    {
+      "role_id": 4,
+      "permission_id": 8
+    },
+    {
+      "role_id": 3,
+      "permission_id": 10
+    },
+    {
+      "role_id": 4,
+      "permission_id": 10
+    },
+    {
+      "role_id": 3,
+      "permission_id": 25
+    },
+    {
+      "role_id": 4,
+      "permission_id": 25
+    },
+    {
+      "role_id": 3,
+      "permission_id": 26
+    },
+    {
+      "role_id": 4,
+      "permission_id": 26
+    },
+    {
+      "role_id": 3,
+      "permission_id": 27
+    },
+    {
+      "role_id": 4,
+      "permission_id": 27
+    },
+    {
+      "role_id": 3,
+      "permission_id": 29
+    },
+    {
+      "role_id": 4,
+      "permission_id": 29
+    },
+    {
+      "role_id": 3,
+      "permission_id": 31
+    },
+    {
+      "role_id": 4,
+      "permission_id": 31
+    },
+    {
+      "role_id": 3,
+      "permission_id": 12
+    },
+    {
+      "role_id": 4,
+      "permission_id": 12
+    },
+    {
+      "role_id": 3,
+      "permission_id": 13
+    },
+    {
+      "role_id": 4,
+      "permission_id": 13
+    },
+    {
+      "role_id": 3,
+      "permission_id": 14
+    },
+    {
+      "role_id": 4,
+      "permission_id": 14
+    },
+    {
+      "role_id": 3,
+      "permission_id": 15
+    },
+    {
+      "role_id": 4,
+      "permission_id": 15
+    },
+    {
+      "role_id": 3,
+      "permission_id": 16
+    },
+    {
+      "role_id": 4,
+      "permission_id": 16
+    },
+    {
+      "role_id": 3,
+      "permission_id": 24
+    },
+    {
+      "role_id": 4,
+      "permission_id": 24
+    },
+    {
+      "role_id": 5,
+      "permission_id": 8
+    },
+    {
+      "role_id": 5,
+      "permission_id": 25
+    },
+    {
+      "role_id": 5,
+      "permission_id": 27
+    },
+    {
+      "role_id": 5,
+      "permission_id": 29
+    },
+    {
+      "role_id": 5,
+      "permission_id": 31
+    },
+    {
+      "role_id": 5,
+      "permission_id": 12
+    },
+    {
+      "role_id": 5,
+      "permission_id": 13
+    },
+    {
+      "role_id": 5,
+      "permission_id": 14
+    },
+    {
+      "role_id": 5,
+      "permission_id": 15
+    },
+    {
+      "role_id": 5,
+      "permission_id": 16
+    },
+    {
+      "role_id": 5,
+      "permission_id": 24
+    },
+    {
+      "role_id": 6,
+      "permission_id": 8
+    },
+    {
+      "role_id": 6,
+      "permission_id": 25
+    },
+    {
+      "role_id": 6,
+      "permission_id": 27
+    },
+    {
+      "role_id": 6,
+      "permission_id": 29
+    },
+    {
+      "role_id": 6,
+      "permission_id": 31
+    },
+    {
+      "role_id": 6,
+      "permission_id": 12
+    },
+    {
+      "role_id": 6,
+      "permission_id": 13
+    },
+    {
+      "role_id": 6,
+      "permission_id": 14
+    },
+    {
+      "role_id": 6,
+      "permission_id": 15
+    },
+    {
+      "role_id": 6,
+      "permission_id": 16
+    },
+    {
+      "role_id": 6,
+      "permission_id": 17
+    },
+    {
+      "role_id": 6,
+      "permission_id": 18
+    },
+    {
+      "role_id": 6,
+      "permission_id": 19
+    },
+    {
+      "role_id": 6,
+      "permission_id": 20
+    },
+    {
+      "role_id": 6,
+      "permission_id": 21
+    },
+    {
+      "role_id": 6,
+      "permission_id": 22
+    },
+    {
+      "role_id": 6,
+      "permission_id": 23
+    },
+    {
+      "role_id": 6,
+      "permission_id": 24
+    },
+    {
+      "role_id": 7,
+      "permission_id": 8
+    },
+    {
+      "role_id": 7,
+      "permission_id": 25
+    },
+    {
+      "role_id": 7,
+      "permission_id": 26
+    },
+    {
+      "role_id": 7,
+      "permission_id": 27
+    },
+    {
+      "role_id": 7,
+      "permission_id": 29
+    },
+    {
+      "role_id": 7,
+      "permission_id": 31
+    },
+    {
+      "role_id": 7,
+      "permission_id": 12
+    },
+    {
+      "role_id": 7,
+      "permission_id": 13
+    },
+    {
+      "role_id": 7,
+      "permission_id": 14
+    },
+    {
+      "role_id": 7,
+      "permission_id": 15
+    },
+    {
+      "role_id": 7,
+      "permission_id": 16
+    },
+    {
+      "role_id": 7,
+      "permission_id": 17
+    },
+    {
+      "role_id": 7,
+      "permission_id": 18
+    },
+    {
+      "role_id": 7,
+      "permission_id": 19
+    },
+    {
+      "role_id": 7,
+      "permission_id": 20
+    },
+    {
+      "role_id": 7,
+      "permission_id": 21
+    },
+    {
+      "role_id": 7,
+      "permission_id": 22
+    },
+    {
+      "role_id": 7,
+      "permission_id": 23
+    },
+    {
+      "role_id": 7,
+      "permission_id": 24
+    },
+    {
+      "role_id": 8,
+      "permission_id": 8
+    },
+    {
+      "role_id": 8,
+      "permission_id": 29
+    },
+    {
+      "role_id": 8,
+      "permission_id": 31
+    },
+    {
+      "role_id": 8,
+      "permission_id": 25
+    },
+    {
+      "role_id": 8,
+      "permission_id": 12
+    },
+    {
+      "role_id": 8,
+      "permission_id": 13
+    },
+    {
+      "role_id": 8,
+      "permission_id": 14
+    },
+    {
+      "role_id": 8,
+      "permission_id": 15
+    },
+    {
+      "role_id": 8,
+      "permission_id": 16
+    },
+    {
+      "role_id": 7,
+      "permission_id": 41
+    },
+    {
+      "role_id": 7,
+      "permission_id": 42
+    },
+    {
+      "role_id": 6,
+      "permission_id": 41
+    },
+    {
+      "role_id": 6,
+      "permission_id": 42
+    },
+    {
+      "role_id": 5,
+      "permission_id": 41
+    },
+    {
+      "role_id": 5,
+      "permission_id": 42
+    },
+    {
+      "role_id": 3,
+      "permission_id": 41
+    },
+    {
+      "role_id": 3,
+      "permission_id": 42
+    },
+    {
+      "role_id": 3,
+      "permission_id": 43
+    },
+    {
+      "role_id": 4,
+      "permission_id": 41
+    },
+    {
+      "role_id": 4,
+      "permission_id": 42
+    },
+    {
+      "role_id": 4,
+      "permission_id": 43
+    },
+    {
+      "role_id": 2,
+      "permission_id": 41
+    },
+    {
+      "role_id": 2,
+      "permission_id": 42
+    },
+    {
+      "role_id": 2,
+      "permission_id": 43
+    },
+    {
+      "role_id": 1,
+      "permission_id": 41
+    },
+    {
+      "role_id": 1,
+      "permission_id": 42
+    },
+    {
+      "role_id": 1,
+      "permission_id": 43
+    }
+  ],
+  "user_scopes": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "scope_type": "SYSTEM",
+      "scope_value": "TOAN_HE_THONG",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 2,
+      "user_id": 2,
+      "scope_type": "DON_VI",
+      "scope_value": "Công ty Điện lực Hà Nội",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 3,
+      "user_id": 3,
+      "scope_type": "TRAM",
+      "scope_value": "Trạm 110kV E1.1 Nghĩa Đô",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 4,
+      "user_id": 4,
+      "scope_type": "TRAM",
+      "scope_value": "Trạm 110kV E1.1 Nghĩa Đô",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 5,
+      "user_id": 5,
+      "scope_type": "DOI",
+      "scope_value": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 6,
+      "user_id": 6,
+      "scope_type": "PHAT_TUYEN",
+      "scope_value": "Phát tuyến 471-E1.1",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 7,
+      "user_id": 7,
+      "scope_type": "SYSTEM",
+      "scope_value": "TOAN_HE_THONG",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 8,
+      "user_id": 8,
+      "scope_type": "PHAT_TUYEN",
+      "scope_value": "Phát tuyến 471-E1.1",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 9,
+      "user_id": 9,
+      "scope_type": "PHAT_TUYEN",
+      "scope_value": "Phát tuyến 471-E1.1",
+      "created_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "audit_logs": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "username": "admin",
+      "user_fullname": "Nguyễn Văn Admin",
+      "action": "SEED_MASTER_DATA",
+      "module": "HE_THONG",
+      "target_id": "INIT",
+      "details": "Khởi tạo dữ liệu nền tảng Phase 1 thành công",
+      "result": "SUCCESS",
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "username": "admin",
+      "user_fullname": "Nguyễn Văn Admin",
+      "action": "SEED_PHASE_2_DATA",
+      "module": "QUAN_LY_THIET_BI",
+      "target_id": "PHASE_2",
+      "details": "Khởi tạo dữ liệu Trạm 110kV, Phát tuyến, Thiết bị và Tọa độ GPS thành công",
+      "result": "SUCCESS",
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "notifications": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Nguyễn Văn Admin (admin) đã được tạo thành công với vai trò Quản trị viên Hệ thống.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 2,
+      "user_id": 2,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Trần Thị Phương Thức (cb_phuongthuc) đã được tạo thành công với vai trò Chuyên viên Phương thức.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 3,
+      "user_id": 3,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Lê Văn Trưởng Ca (truongca_a) đã được tạo thành công với vai trò Trưởng ca Điều hành.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 4,
+      "user_id": 4,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Phạm Văn Phó Ca (phoca_a) đã được tạo thành công với vai trò Phó ca Điều hành.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 5,
+      "user_id": 5,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Hoàng Văn Đội Trưởng (doitruong_1) đã được tạo thành công với vai trò Đội trưởng QLVH.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 6,
+      "user_id": 6,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Đỗ Văn Vận Hành (nv_vanhanh) đã được tạo thành công với vai trò Kỹ thuật viên Vận hành.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 7,
+      "user_id": 7,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Nguyễn Văn Khách (khach_guest) đã được tạo thành công với vai trò Cán bộ Giám sát.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 8,
+      "user_id": 8,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Bùi Văn Hiện Trường (nhanvien_hientruong) đã được tạo thành công với vai trò Nhân viên Hiện trường.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 9,
+      "user_id": 9,
+      "title": "Chào mừng đến với Hệ thống Quản lý Thiết bị Lưới điện",
+      "message": "Tài khoản Nhân viên hiện trường Test (field.test) đã được tạo thành công với vai trò Nhân viên Hiện trường Test.",
+      "type": "INFO",
+      "is_read": 0,
+      "link": null,
+      "created_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "documents": [
+    {
+      "id": 1,
+      "title": "Quy trình Vận hành Lưới điện Phân phối 110kV-22kV",
+      "document_code": "QT-VH-2026-01",
+      "category": "Quy trình vận hành",
+      "file_url": "/docs/quy-trinh-van-hanh.pdf",
+      "created_by": "Nguyễn Văn Admin",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "deleted_at": null
+    },
+    {
+      "id": 2,
+      "title": "Tiêu chuẩn Kỹ thuật Máy biến áp Lực 110kV Đông Anh",
+      "document_code": "TCKT-MBA-110KV",
+      "category": "Tiêu chuẩn kỹ thuật",
+      "file_url": "/docs/tieu-chuan-mba.pdf",
+      "created_by": "Trần Thị Phương Thức",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "deleted_at": null
+    },
+    {
+      "id": 3,
+      "title": "Sơ đồ Nguyên lý Kết lưới Phát tuyến 471 & 473 E1.1",
+      "document_code": "SD-471-473-E1.1",
+      "category": "Sơ đồ kết lưới",
+      "file_url": "/docs/so-do-phat-tuyen.pdf",
+      "created_by": "Lê Văn Trưởng Ca",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "deleted_at": null
+    }
+  ],
+  "guides": [
+    {
+      "id": 1,
+      "title": "Hướng dẫn sử dụng Phân quyền và Scope trong Hệ thống Giai đoạn 1",
+      "category": "Hướng dẫn Quản trị",
+      "content": "Hệ thống sử dụng mô hình RBAC kết hợp Scope (Toàn hệ thống, Đơn vị, Đội, Trạm, Phát tuyến). Mỗi người dùng có 1 hoặc nhiều vai trò và phạm vi làm việc tương ứng.",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 2,
+      "title": "Hướng dẫn đăng ký tài khoản và xử lý Quên mật khẩu",
+      "category": "Sử dụng Hệ thống",
+      "content": "Người dùng sử dụng Mã nhân viên hoặc Tên đăng nhập để truy cập. Trường hợp quên mật khẩu, bấm nút Quên mật khẩu tại trang Đăng nhập để nhận hướng dẫn reset từ Admin.",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "substations": [
+    {
+      "id": 1,
+      "substation_code": "T110-E1.1",
+      "name": "Trạm 110kV E1.1 Nghĩa Đô",
+      "address": "Số 1 Phố Hoàng Quốc Việt, Cầu Giấy, Hà Nội",
+      "latitude": 21.0458,
+      "longitude": 105.7925,
+      "google_maps_url": "https://maps.google.com/?q=21.0458,105.7925",
+      "image_url": "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80",
+      "notes": "Trạm trọng điểm khu lực Cầu Giấy - Tây Hồ. Quy mô 2 máy biến áp 63MVA.",
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 2,
+      "substation_code": "T110-E1.2",
+      "name": "Trạm 110kV E1.2 Đông Anh",
+      "address": "Thị trấn Đông Anh, Hà Nội",
+      "latitude": 21.1352,
+      "longitude": 105.848,
+      "google_maps_url": "https://maps.google.com/?q=21.1352,105.8480",
+      "image_url": "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=800&q=80",
+      "notes": "Cấp điện KCN Đông Anh. Quy mô 2 MBA 40MVA.",
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 3,
+      "substation_code": "T110-E1.3",
+      "name": "Trạm 110kV E1.3 Gia Lâm",
+      "address": "Thị trấn Sài Đồng, Gia Lâm, Hà Nội",
+      "latitude": 21.0512,
+      "longitude": 105.892,
+      "google_maps_url": "https://maps.google.com/?q=21.0512,105.8920",
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "notes": "Trạm khu vực đông Hà Nội.",
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    }
+  ],
+  "feeders": [
+    {
+      "id": 1,
+      "feeder_code": "F471-E1.1",
+      "name": "Phát tuyến 471 E1.1 Nghĩa Đô",
+      "substation_id": 1,
+      "start_point": "Thanh cái 22kV E1.1",
+      "end_point": "Dao cách ly 471-7 Hoàng Quốc Việt",
+      "notes": null,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 2,
+      "feeder_code": "F473-E1.1",
+      "name": "Phát tuyến 473 E1.1 Nghĩa Đô",
+      "substation_id": 1,
+      "start_point": "Thanh cái 22kV E1.1",
+      "end_point": "Cầu dao 473-1 Nguyễn Văn Huyên",
+      "notes": null,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 3,
+      "feeder_code": "F475-E1.1",
+      "name": "Phát tuyến 475 E1.1 Nghĩa Đô",
+      "substation_id": 1,
+      "start_point": "Thanh cái 22kV E1.1",
+      "end_point": "Tủ RMU Phạm Văn Đồng",
+      "notes": null,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 4,
+      "feeder_code": "F471-E1.2",
+      "name": "Phát tuyến 471 E1.2 Đông Anh",
+      "substation_id": 2,
+      "start_point": "Thanh cái 22kV E1.2",
+      "end_point": "Trạm biến áp KCN 1",
+      "notes": null,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 5,
+      "feeder_code": "F473-E1.2",
+      "name": "Phát tuyến 473 E1.2 Đông Anh",
+      "substation_id": 2,
+      "start_point": "Thanh cái 22kV E1.2",
+      "end_point": "Dao 473-12 Nguyên Khê",
+      "notes": null,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 6,
+      "feeder_code": "F471-E1.3",
+      "name": "Phát tuyến 471 E1.3 Gia Lâm",
+      "substation_id": 3,
+      "start_point": "Thanh cái 22kV E1.3",
+      "end_point": "Trạm phân phối Sài Đồng",
+      "notes": null,
+      "status": "ACTIVE",
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    }
+  ],
+  "devices": [
+    {
+      "id": 1,
+      "device_id": "DEV-LBS-471-01",
+      "device_code": "LBS-471/01",
+      "name": "Dao cách ly phụ tải LBS 471-01",
+      "device_type": "LBS",
+      "pole_number": "Cột 12",
+      "feeder_id": 1,
+      "substation_id": 1,
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "status": "ACTIVE",
+      "switch_status": "CLOSED",
+      "scada_status": "SIGNAL",
+      "relay_79": "ON",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.0475,
+      "longitude": 105.795,
+      "google_maps_url": "https://maps.google.com/?q=21.0475,105.7950",
+      "notes": "LBS tích hợp điều khiển xa SCADA qua GPRS. Đã bảo dưỡng T6/2026.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 2,
+      "device_id": "DEV-DS-471-15",
+      "device_code": "DS-471/15",
+      "name": "Dao cách ly phân đoạn DS 471-15",
+      "device_type": "DS",
+      "pole_number": "Cột 15",
+      "feeder_id": 1,
+      "substation_id": 1,
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "status": "ACTIVE",
+      "switch_status": "CLOSED",
+      "scada_status": "NO_SIGNAL",
+      "relay_79": "N_A",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.049,
+      "longitude": 105.798,
+      "google_maps_url": "https://maps.google.com/?q=21.0490,105.7980",
+      "notes": "Dao cách ly thao tác tay bằng sào.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 3,
+      "device_id": "DEV-RCL-473-08",
+      "device_code": "RCL-473/08",
+      "name": "Recloser tự động lặp lại RCL 473-08",
+      "device_type": "RCL",
+      "pole_number": "Cột 08",
+      "feeder_id": 2,
+      "substation_id": 1,
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "status": "ACTIVE",
+      "switch_status": "OPEN",
+      "scada_status": "SIGNAL",
+      "relay_79": "ON",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.042,
+      "longitude": 105.789,
+      "google_maps_url": "https://maps.google.com/?q=21.0420,105.7890",
+      "notes": "Máy cắt Recloser Cooper 22kV. Đang mở cách ly sự cố nhánh 3.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 4,
+      "device_id": "DEV-RMU-475-T01",
+      "device_code": "RMU-475/T01",
+      "name": "Tủ RMU Schneider 24kV RMU-475/T01",
+      "device_type": "RMU",
+      "pole_number": "Tổ Bốt T01",
+      "feeder_id": 3,
+      "substation_id": 1,
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "status": "ACTIVE",
+      "switch_status": "CLOSED",
+      "scada_status": "SIGNAL",
+      "relay_79": "N_A",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.0435,
+      "longitude": 105.801,
+      "google_maps_url": "https://maps.google.com/?q=21.0435,105.8010",
+      "notes": "Tủ RMU 4 ngăn Schneider FBX.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 5,
+      "device_id": "DEV-LBS-471E12-05",
+      "device_code": "LBS-471-E1.2/05",
+      "name": "LBS Khép vòng LBS-471-E1.2/05",
+      "device_type": "LBS",
+      "pole_number": "Cột 05",
+      "feeder_id": 4,
+      "substation_id": 2,
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Quản lý Vận hành 2",
+      "status": "ACTIVE",
+      "switch_status": "CLOSED",
+      "scada_status": "SIGNAL",
+      "relay_79": "OFF",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.138,
+      "longitude": 105.851,
+      "google_maps_url": "https://maps.google.com/?q=21.1380,105.8510",
+      "notes": "Điểm khép vòng với PT 473-E1.2.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 6,
+      "device_id": "DEV-RCL-473E12-12",
+      "device_code": "RCL-473-E1.2/12",
+      "name": "Recloser RCL-473-E1.2/12",
+      "device_type": "RCL",
+      "pole_number": "Cột 12",
+      "feeder_id": 5,
+      "substation_id": 2,
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Quản lý Vận hành 2",
+      "status": "MAINTENANCE",
+      "switch_status": "OPEN",
+      "scada_status": "NO_SIGNAL",
+      "relay_79": "OFF",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.132,
+      "longitude": 105.845,
+      "google_maps_url": "https://maps.google.com/?q=21.1320,105.8450",
+      "notes": "Đang tạm dừng để kiểm tra bảo dưỡng định kỳ.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 7,
+      "device_id": "DEV-DS-471E13-02",
+      "device_code": "DS-471-E1.3/02",
+      "name": "Dao cách ly DS 471-E1.3/02",
+      "device_type": "DS",
+      "pole_number": "Cột 02",
+      "feeder_id": 6,
+      "substation_id": 3,
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Quản lý Vận hành 3",
+      "status": "ACTIVE",
+      "switch_status": "CLOSED",
+      "scada_status": "SIGNAL",
+      "relay_79": "N_A",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.054,
+      "longitude": 105.895,
+      "google_maps_url": "https://maps.google.com/?q=21.0540,105.8950",
+      "notes": "Dao liên lạc đầu tuyến Gia Lâm.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    },
+    {
+      "id": 8,
+      "device_id": "DEV-OTH-471-TB01",
+      "device_code": "TB01-471",
+      "name": "Dàn Tụ bù hạ áp TB01-471",
+      "device_type": "OTHER",
+      "pole_number": "Cột 22",
+      "feeder_id": 1,
+      "substation_id": 1,
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "status": "ACTIVE",
+      "switch_status": "UNKNOWN",
+      "scada_status": "UNKNOWN",
+      "relay_79": "N_A",
+      "battery_status": "UNCHECKED",
+      "latitude": 21.046,
+      "longitude": 105.791,
+      "google_maps_url": "https://maps.google.com/?q=21.0460,105.7910",
+      "notes": "Dàn tụ bù bù công suất phản kháng.",
+      "current_setting": null,
+      "created_at": "2026-08-26 15:05:53",
+      "updated_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM",
+      "updated_by": null,
+      "deleted_at": null
+    }
+  ],
+  "device_images": [
+    {
+      "id": 1,
+      "device_id": 1,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế Dao cách ly phụ tải LBS 471-01",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    },
+    {
+      "id": 2,
+      "device_id": 2,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế Dao cách ly phân đoạn DS 471-15",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    },
+    {
+      "id": 3,
+      "device_id": 3,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế Recloser tự động lặp lại RCL 473-08",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    },
+    {
+      "id": 4,
+      "device_id": 4,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế Tủ RMU Schneider 24kV RMU-475/T01",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    },
+    {
+      "id": 5,
+      "device_id": 5,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế LBS Khép vòng LBS-471-E1.2/05",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    },
+    {
+      "id": 6,
+      "device_id": 6,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế Recloser RCL-473-E1.2/12",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    },
+    {
+      "id": 7,
+      "device_id": 7,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế Dao cách ly DS 471-E1.3/02",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    },
+    {
+      "id": 8,
+      "device_id": 8,
+      "image_url": "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+      "is_primary": 1,
+      "caption": "Hình ảnh thực tế Dàn Tụ bù hạ áp TB01-471",
+      "created_at": "2026-08-26 15:05:53",
+      "created_by": "SYSTEM"
+    }
+  ],
+  "device_locations": [
+    {
+      "id": 1,
+      "device_id": 1,
+      "latitude": 21.0475,
+      "longitude": 105.795,
+      "google_maps_url": "https://maps.google.com/?q=21.0475,105.7950",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 2,
+      "device_id": 2,
+      "latitude": 21.049,
+      "longitude": 105.798,
+      "google_maps_url": "https://maps.google.com/?q=21.0490,105.7980",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 3,
+      "device_id": 3,
+      "latitude": 21.042,
+      "longitude": 105.789,
+      "google_maps_url": "https://maps.google.com/?q=21.0420,105.7890",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 4,
+      "device_id": 4,
+      "latitude": 21.0435,
+      "longitude": 105.801,
+      "google_maps_url": "https://maps.google.com/?q=21.0435,105.8010",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 5,
+      "device_id": 5,
+      "latitude": 21.138,
+      "longitude": 105.851,
+      "google_maps_url": "https://maps.google.com/?q=21.1380,105.8510",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 6,
+      "device_id": 6,
+      "latitude": 21.132,
+      "longitude": 105.845,
+      "google_maps_url": "https://maps.google.com/?q=21.1320,105.8450",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 7,
+      "device_id": 7,
+      "latitude": 21.054,
+      "longitude": 105.895,
+      "google_maps_url": "https://maps.google.com/?q=21.0540,105.8950",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 8,
+      "device_id": 8,
+      "latitude": 21.046,
+      "longitude": 105.791,
+      "google_maps_url": "https://maps.google.com/?q=21.0460,105.7910",
+      "note": "Khởi tạo tọa độ GPS ban đầu",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "device_status_history": [
+    {
+      "id": 1,
+      "device_id": 1,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "CLOSED",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "SIGNAL",
+      "old_relay_79": "N_A",
+      "new_relay_79": "ON",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 2,
+      "device_id": 2,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "CLOSED",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "NO_SIGNAL",
+      "old_relay_79": "N_A",
+      "new_relay_79": "N_A",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 3,
+      "device_id": 3,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "OPEN",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "SIGNAL",
+      "old_relay_79": "N_A",
+      "new_relay_79": "ON",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 4,
+      "device_id": 4,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "CLOSED",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "SIGNAL",
+      "old_relay_79": "N_A",
+      "new_relay_79": "N_A",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 5,
+      "device_id": 5,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "CLOSED",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "SIGNAL",
+      "old_relay_79": "N_A",
+      "new_relay_79": "OFF",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 6,
+      "device_id": 6,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "OPEN",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "NO_SIGNAL",
+      "old_relay_79": "N_A",
+      "new_relay_79": "OFF",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 7,
+      "device_id": 7,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "CLOSED",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "SIGNAL",
+      "old_relay_79": "N_A",
+      "new_relay_79": "N_A",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    },
+    {
+      "id": 8,
+      "device_id": 8,
+      "old_switch_status": "UNKNOWN",
+      "new_switch_status": "UNKNOWN",
+      "old_scada_status": "UNKNOWN",
+      "new_scada_status": "UNKNOWN",
+      "old_relay_79": "N_A",
+      "new_relay_79": "N_A",
+      "note": "Thiết lập trạng thái ban đầu hệ thống",
+      "updated_by": "SYSTEM",
+      "created_at": "2026-08-26 15:05:53"
+    }
+  ],
+  "system_backups": [
+    {
+      "id": 1,
+      "name": "Bản sao lưu chuẩn cơ sở dữ liệu ban đầu (Baseline Snapshot)",
+      "backup_type": "SNAPSHOT",
+      "file_path": "snapshot_snapshot_2026-08-26T15-12-31-773Z.json",
+      "counts_summary": "{\"devices\":8,\"feeders\":6,\"stations\":3,\"loops\":0,\"work\":0,\"tasks\":0,\"checklists\":0,\"schedules\":0,\"issues\":0,\"topology\":0,\"links\":24}",
+      "data_json": "",
+      "file_size_bytes": 17910,
+      "created_by": 1,
+      "created_by_name": "Hệ Thống Lưới Điện",
+      "created_at": "2026-08-26 15:12:31",
+      "notes": "Điểm khôi phục chuẩn mẫu ban đầu có đầy đủ trạm 110kV, phát tuyến, thiết bị và công việc mẫu."
+    }
+  ],
+  "system_settings": [
+    {
+      "key": "initial_bootstrap_completed",
+      "value": "1",
+      "updated_at": "2026-08-26 15:12:31"
+    }
+  ]
+}
