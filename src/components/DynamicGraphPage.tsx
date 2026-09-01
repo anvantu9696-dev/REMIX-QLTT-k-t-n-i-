@@ -1442,7 +1442,7 @@ export function DynamicGraphInner() {
                     <div className="text-slate-600 pl-3.5 space-y-0.5 text-[10px]">
                       <div>Trạm: <strong>{currentSelectedLoop.substation_name_a || 'Chưa gán'}</strong> ({currentSelectedLoop.substation_code_a || '-'})</div>
                       <div>Phát tuyến: <strong>{currentSelectedLoop.feeder_code_a || 'Chưa gán'}</strong></div>
-                      <div>Thiết bị đầu A: <span className="font-mono text-slate-800 font-bold">{currentSelectedLoop.device_id_a || 'Chưa gán'}</span></div>
+                      <div>Thiết bị đầu A: <span className="text-slate-900 font-bold">{currentSelectedLoop.device_name_a || currentSelectedLoop.device_code_a || currentSelectedLoop.device_id_a || 'Chưa gán'}</span></div>
                     </div>
                   </div>
 
@@ -1453,7 +1453,7 @@ export function DynamicGraphInner() {
                       <span>Điểm dừng pháp lý (Vật lý)</span>
                     </div>
                     <div className="text-slate-700 pl-3.5 space-y-0.5 text-[10px]">
-                      <div>Mã thiết bị: <strong className="font-mono text-indigo-950">{currentSelectedLoop.loop_device_code || currentSelectedLoop.loop_device_id || 'Chưa chọn'}</strong></div>
+                      <div>Tên thiết bị: <strong className="text-indigo-950 font-bold">{currentSelectedLoop.loop_device_name || currentSelectedLoop.loop_device_code || currentSelectedLoop.loop_device_id || 'Chưa chọn'}</strong></div>
                       <div>Vị trí trụ: <span className="font-mono font-bold text-slate-900">{currentSelectedLoop.loop_device_pole || 'Chưa cập nhật'}</span></div>
                       <div>Đội QLVH: <span>{currentSelectedLoop.loop_device_team || currentSelectedLoop.loop_device_unit || 'Đội Vận Hành'}</span></div>
                     </div>
@@ -1468,7 +1468,7 @@ export function DynamicGraphInner() {
                     <div className="text-slate-600 pl-3.5 space-y-0.5 text-[10px]">
                       <div>Trạm: <strong>{currentSelectedLoop.substation_name_b || 'Chưa gán'}</strong> ({currentSelectedLoop.substation_code_b || '-'})</div>
                       <div>Phát tuyến: <strong>{currentSelectedLoop.feeder_code_b || 'Chưa gán'}</strong></div>
-                      <div>Thiết bị đầu B: <span className="font-mono text-slate-800 font-bold">{currentSelectedLoop.device_id_b || 'Chưa gán'}</span></div>
+                      <div>Thiết bị đầu B: <span className="text-slate-900 font-bold">{currentSelectedLoop.device_name_b || currentSelectedLoop.device_code_b || currentSelectedLoop.device_id_b || 'Chưa gán'}</span></div>
                     </div>
                   </div>
                 </div>

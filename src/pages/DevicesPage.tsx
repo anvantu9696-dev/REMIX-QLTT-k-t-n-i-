@@ -1,33 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Zap,
-  Plus,
-  Search,
-  Building2,
-  GitCommitHorizontal,
-  MapPin,
-  Edit2,
-  Trash2,
-  Eye,
-  AlertCircle,
-  X,
-  CheckCircle2,
-  ExternalLink,
-  ShieldAlert,
-  Activity,
-  Layers,
-  Check,
-  AlertTriangle,
-  Radio,
-  Download,
-  Compass,
-  LayoutGrid,
-  List,
-  Upload,
-  Camera,
-  QrCode
-} from 'lucide-react';
+import { Zap, Plus, Search, Building2, GitCommitHorizontal, MapPin, Edit2, Trash2, Eye, AlertCircle, X, CheckCircle2, ExternalLink, ShieldAlert, Activity, Layers, Check, AlertTriangle, Radio, Download, Compass, LayoutGrid, List, Upload, Camera, QrCode } from 'lucide-react';
 import { api } from '../lib/api';
+import { normalizeDeviceRelations } from '../utils/deviceNormalizer';
 import { Device, Substation, Feeder, DeviceType, SwitchStatus, ScadaStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { DeviceProposalModal } from '../components/devices/DeviceProposalModal';
@@ -42,15 +16,22 @@ import { DEVICE_IMAGE_FEATURE_ENABLED } from '../../server/config';
 
 interface DevicesPageProps {
   onNavigateToDetail: (deviceId: number | string) => void;
-  initialFeederId?: number;
+  initialFeederId?: number | string;
 }
 
 export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, initialFeederId }) => {
-  const { user, isGuest, hasPermission } = useAuth();
+  const { user, isGuest, hasRole } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [substations, setSubstations] = useState<Substation[]>([]);
   const [feeders, setFeeders] = useState<Feeder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Normalizer
+  const getNormalizedRelations = useCallback((device: Device) => {
+    return normalizeDeviceRelations(device, substations, feeders);
+  }, [substations, feeders]);
 
   // Bulk Selection State
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -61,10 +42,24 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
   const [search, setSearch] = useState('');
   const [stationFilter, setStationFilter] = useState('');
   const [feederFilter, setFeederFilter] = useState<string>(initialFeederId ? String(initialFeederId) : '');
+  
+  // Sync prop changes (e.g. from browser back/forward navigation)
+  useEffect(() => {
+    if (initialFeederId !== undefined) {
+      setFeederFilter(String(initialFeederId));
+    } else {
+      setFeederFilter('');
+    }
+  }, [initialFeederId]);
+
   const [typeFilter, setTypeFilter] = useState('');
   const [switchFilter, setSwitchFilter] = useState('');
   const [scadaFilter, setScadaFilter] = useState('');
+  const [batteryFilter, setBatteryFilter] = useState('');
+  const [sortBy, setSortBy] = useState<string>('device_id');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
+  const [totalDevicesCount, setTotalDevicesCount] = useState<number>(0);
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -121,32 +116,36 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    fetchMetadata();
+    const init = async () => {
+      await fetchMetadata();
+      await fetchDevices({ limit: 10 });
+    };
+    init();
   }, []);
 
-  useRealtimeSync(() => {
-    fetchDevices();
-    fetchMetadata();
-  });
-
+  // Removed separate fetchDevices effect
   useEffect(() => {
-    fetchDevices();
-  }, [search, stationFilter, feederFilter, typeFilter, switchFilter, scadaFilter]);
+    if (substations.length > 0 || feeders.length > 0) {
+      fetchDevices({ limit: 10 });
+    }
+  }, [search, stationFilter, feederFilter, typeFilter, switchFilter, scadaFilter, batteryFilter]);
 
   const fetchMetadata = async () => {
     try {
-      const [stRes, fdRes] = await Promise.all([
+      const [stRes, fdRes, allDevRes] = await Promise.all([
         api.getSubstations(),
-        api.getFeeders()
+        api.getFeeders(),
+        api.getDevices({ limit: 10 })
       ]);
       if (stRes.success) setSubstations(stRes.data);
       if (fdRes.success) setFeeders(fdRes.data);
+      if (allDevRes.success) setTotalDevicesCount(allDevRes.data.length);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const fetchDevices = async () => {
+  const fetchDevices = async (options?: any) => {
     setLoading(true);
     try {
       const params: any = {};
@@ -156,15 +155,49 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       if (typeFilter) params.type = typeFilter;
       if (switchFilter) params.switch_status = switchFilter;
       if (scadaFilter) params.scada_status = scadaFilter;
+      if (batteryFilter) params.battery_status = batteryFilter;
+      params.limit = 10;
 
       const res = await api.getDevices(params);
       if (res.success) {
         setDevices(res.data);
+        setNextCursor(res.nextCursor || null);
       }
     } catch (err: any) {
       setError(err.message || 'Không thể tải danh sách thiết bị');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const params: any = {};
+      if (search) params.search = search;
+      if (stationFilter) params.substation_id = stationFilter;
+      if (feederFilter) params.feeder_id = feederFilter;
+      if (typeFilter) params.type = typeFilter;
+      if (switchFilter) params.switch_status = switchFilter;
+      if (scadaFilter) params.scada_status = scadaFilter;
+      if (batteryFilter) params.battery_status = batteryFilter;
+      params.limit = 10;
+      params.lastDocId = nextCursor;
+
+      const res = await api.getDevices(params);
+      if (res.success) {
+        setDevices(prev => {
+          const existing = new Set(prev.map((d: any) => d.id));
+          const newItems = res.data.filter((d: any) => !existing.has(d.id));
+          return [...prev, ...newItems];
+        });
+        setNextCursor(res.nextCursor || null);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Không thể tải thêm thiết bị');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -267,6 +300,15 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       setFormError('Không thể lưu do trùng mã DEVICE_ID! Vui lòng đặt mã khác.');
       return;
     }
+    
+    // Validate relations
+    if (formData.substation_id && formData.feeder_id) {
+        const feeder = feeders.find(f => String(f.id) === String(formData.feeder_id));
+        if (feeder && String(feeder.substation_id) !== String(formData.substation_id)) {
+            setFormError('Phát tuyến đã chọn không thuộc Trạm 110kV đã chọn!');
+            return;
+        }
+    }
 
     setSubmitting(true);
     try {
@@ -278,7 +320,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
         setSuccess(`Đã tạo thành công thiết bị ${formData.name}`);
       }
       setModalOpen(false);
-      fetchDevices();
+      fetchDevices({ limit: 10 });
     } catch (err: any) {
       setFormError(err.message || 'Lỗi lưu dữ liệu thiết bị');
     } finally {
@@ -305,7 +347,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       const res = await api.deleteDevice(deletingDevice.id);
       setSuccess(res.message || `Đã xóa mềm thành công thiết bị ${deletingDevice.name}`);
       setDeleteModalOpen(false);
-      fetchDevices();
+      fetchDevices({ limit: 10 });
     } catch (err: any) {
       if (err.status === 409 || err.usage || err.data?.usage) {
         setDeleteError(err.data?.message || err.message || 'Không thể xóa thiết bị vì thiết bị đang được sử dụng trong hệ thống.');
@@ -350,18 +392,24 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       alert('Không có dữ liệu để xuất CSV');
       return;
     }
-    const headers = ['Mã Thiết Bị', 'Tên Thiết Bị', 'Loại', 'Vị trí trụ lắp đặt', 'Đơn Vị', 'Đội Quản Lý', 'Trạng Thái Máy Cắt', 'SCADA', 'Tọa Độ Lat', 'Tọa Độ Lng'];
+    const headers = ["Mã thiết bị", "Tên thiết bị", "Loại thiết bị", "Vị trí trụ lắp đặt", "Trạm 110kV", "Phát tuyến", "Đơn vị", "Đội QLVH", "Trạng thái", "Trạng thái cắt", "SCADA", "Rơ le 79", "Dòng chỉnh định", "Vĩ độ (Lat)", "Kinh độ (Lng)", "Ghi chú"];
     const rows = devices.map(d => [
       `"${d.device_id || ''}"`,
       `"${d.name || ''}"`,
       `"${d.device_type || ''}"`,
       `"${d.pole_number || ''}"`,
+      `"${d.substation_name || d.substation_code || ''}"`,
+      `"${d.feeder_name || d.feeder_code || ''}"`,
       `"${d.unit || ''}"`,
       `"${d.team || ''}"`,
+      `"${d.status || ''}"`,
       `"${d.switch_status || ''}"`,
       `"${d.scada_status || ''}"`,
+      `"${d.relay_79 || ''}"`,
+      `"${d.current_setting || ''}"`,
       `"${d.latitude || ''}"`,
-      `"${d.longitude || ''}"`
+      `"${d.longitude || ''}"`,
+      `"${d.notes || ''}"`
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -373,9 +421,63 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     document.body.removeChild(link);
   };
 
+  
+  
+  const sortedDevices = React.useMemo(() => {
+    return [...devices].sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+      if (sortBy === 'device_id') {
+        valA = a.device_id || '';
+        valB = b.device_id || '';
+      } else if (sortBy === 'name') {
+        valA = a.name || '';
+        valB = b.name || '';
+      } else if (sortBy === 'device_type') {
+        valA = a.device_type || '';
+        valB = b.device_type || '';
+      } else if (sortBy === 'switch_status') {
+        valA = a.switch_status || '';
+        valB = b.switch_status || '';
+      } else if (sortBy === 'scada_status') {
+        valA = a.scada_status || '';
+        valB = b.scada_status || '';
+      } else if (sortBy === 'battery_status') {
+        valA = a.battery_status || '';
+        valB = b.battery_status || '';
+      } else if (sortBy === 'pole_number') {
+        valA = a.pole_number || '';
+        valB = b.pole_number || '';
+      } else {
+        valA = String(a.id || '');
+        valB = String(b.id || '');
+      }
+
+      // Check if both values are purely numeric or can be parsed as numbers
+      const numA = parseFloat(valA);
+      const numB = parseFloat(valB);
+      if (!isNaN(numA) && !isNaN(numB) && String(valA).trim() !== '' && String(valB).trim() !== '') {
+        return sortOrder === 'asc' ? numA - numB : numB - numA;
+      }
+
+      const cmp = String(valA).localeCompare(String(valB), 'vi', { numeric: true, sensitivity: 'base' });
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+  }, [devices, sortBy, sortOrder]);
+
+
+  const handleSortField = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+
   // Bulk Selection Handlers
-  const isAllSelected = devices.length > 0 && devices.every(d => selectedIds.includes(d.id));
-  const isIndeterminate = devices.some(d => selectedIds.includes(d.id)) && !isAllSelected;
+  const isAllSelected = sortedDevices.length > 0 && sortedDevices.every(d => selectedIds.includes(d.id));
+  const isIndeterminate = sortedDevices.some(d => selectedIds.includes(d.id)) && !isAllSelected;
 
   const headerCheckboxRef = React.useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -388,7 +490,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     if (isAllSelected) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(devices.map(d => d.id));
+      setSelectedIds(sortedDevices.map(d => d.id));
     }
   };
 
@@ -403,7 +505,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
   };
 
   const handleSelectAllFiltered = () => {
-    setSelectedIds(devices.map(d => d.id));
+    setSelectedIds(sortedDevices.map(d => d.id));
   };
 
   const selectedDevices = devices.filter(d => selectedIds.includes(d.id));
@@ -417,7 +519,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       });
       if (res.success) {
         setSuccess(res.message || `Đã cập nhật ${selectedIds.length} thiết bị.`);
-        fetchDevices();
+        fetchDevices({ limit: 10 });
         setSelectedIds([]);
       } else {
         setError(res.message || 'Cập nhật trạng thái thất bại');
@@ -482,7 +584,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
             </button>
           )}
 
-          {!isGuest() && (hasPermission('GRID_DATA_IMPORT') || user?.roles?.includes('ADMIN')) && (
+          {!isGuest() && (hasRole('ADMIN') || user?.roles?.includes('ADMIN')) && (
             <button
               onClick={() => {
                 window.history.pushState({}, '', '/import');
@@ -496,7 +598,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
             </button>
           )}
 
-          {!isGuest() && hasPermission('equipment:create') && (
+          {!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER')) && (
             <button
               onClick={handleOpenAddModal}
               className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
@@ -571,7 +673,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
           onChange={e => setTypeFilter(e.target.value)}
           className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
         >
-          <option value="">Loại thiết bị</option>
+          <option value="">Tất cả loại thiết bị</option>
           <option value="LBS">LBS (Cầu dao phụ tải)</option>
           <option value="REC">REC (Máy cắt / Recloser)</option>
           <option value="DS">DS (Cầu dao cách ly)</option>
@@ -584,23 +686,158 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
           onChange={e => setSwitchFilter(e.target.value)}
           className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
         >
-          <option value="">Trạng thái đóng/cắt</option>
+          <option value="">Tất cả trạng thái</option>
           <option value="CLOSED">Đóng (CLOSED)</option>
           <option value="OPEN">Mở (OPEN)</option>
           <option value="UNKNOWN">Chưa xác định</option>
         </select>
+
+        <select
+          value={scadaFilter}
+          onChange={e => setScadaFilter(e.target.value)}
+          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
+        >
+          <option value="">Tất cả SCADA</option>
+          <option value="SIGNAL">Có tín hiệu</option>
+          <option value="NO_SIGNAL">Mất tín hiệu</option>
+        </select>
+
+        <select
+          value={batteryFilter}
+          onChange={e => setBatteryFilter(e.target.value)}
+          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
+        >
+          <option value="">Tất cả tình trạng ắc quy</option>
+          <option value="GOOD">Tốt</option>
+          <option value="WEAK">Yếu</option>
+          <option value="BROKEN">Hỏng</option>
+          <option value="REPLACING">Đang thay</option>
+          <option value="UNCHECKED">Chưa kiểm tra</option>
+        </select>
+        <button
+          onClick={() => {
+            setSearch('');
+            setStationFilter('');
+            setFeederFilter('');
+            setTypeFilter('');
+            setSwitchFilter('');
+            setScadaFilter('');
+            setBatteryFilter('');
+          }}
+          className="bg-white border border-slate-300 text-slate-600 rounded-lg px-3 py-2 text-xs font-bold hover:bg-slate-50 focus:outline-none focus:border-red-500"
+        >
+          Xóa bộ lọc
+        </button>
+      </div>
+
+      {/* Active Filter Chips */}
+      {(search || stationFilter || feederFilter || typeFilter || switchFilter || scadaFilter || batteryFilter) && (
+        <div className="flex flex-wrap items-center gap-2 my-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+          <span className="font-bold text-slate-500">Bộ lọc đang áp dụng:</span>
+          {search && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">
+              Từ khóa: "{search}"
+              <button onClick={() => setSearch('')} className="hover:text-blue-900 font-bold ml-1">×</button>
+            </span>
+          )}
+          {stationFilter && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">
+              Trạm: {substations.find(s => String(s.id) === String(stationFilter))?.name || stationFilter}
+              <button onClick={() => { setStationFilter(''); setFeederFilter(''); }} className="hover:text-blue-900 font-bold ml-1">×</button>
+            </span>
+          )}
+          {feederFilter && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">
+              Phát tuyến: {feeders.find(f => String(f.id) === String(feederFilter))?.name || feederFilter}
+              <button onClick={() => setFeederFilter('')} className="hover:text-blue-900 font-bold ml-1">×</button>
+            </span>
+          )}
+          {typeFilter && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">
+              Loại: {typeFilter}
+              <button onClick={() => setTypeFilter('')} className="hover:text-blue-900 font-bold ml-1">×</button>
+            </span>
+          )}
+          {switchFilter && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">
+              Đóng/Cắt: {switchFilter === 'CLOSED' ? 'Đóng' : switchFilter === 'OPEN' ? 'Mở' : 'Không xác định'}
+              <button onClick={() => setSwitchFilter('')} className="hover:text-blue-900 font-bold ml-1">×</button>
+            </span>
+          )}
+          {scadaFilter && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">
+              SCADA: {scadaFilter === 'SIGNAL' ? 'Có tín hiệu' : 'Mất tín hiệu'}
+              <button onClick={() => setScadaFilter('')} className="hover:text-blue-900 font-bold ml-1">×</button>
+            </span>
+          )}
+          {batteryFilter && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">
+              Ắc quy: {batteryFilter}
+              <button onClick={() => setBatteryFilter('')} className="hover:text-blue-900 font-bold ml-1">×</button>
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setSearch('');
+              setStationFilter('');
+              setFeederFilter('');
+              setTypeFilter('');
+              setSwitchFilter('');
+              setScadaFilter('');
+              setBatteryFilter('');
+            }}
+            className="text-red-600 font-bold hover:underline ml-auto"
+          >
+            Xóa tất cả bộ lọc
+          </button>
+        </div>
+      )}
+
+      <div className="text-xs font-semibold text-slate-600 mt-2 mb-4">
+        Đang hiển thị {devices.length} thiết bị
+      </div>
+
+      
+      {/* Sort & Quick Controls Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 rounded-xl border border-slate-200 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Sắp xếp theo:</span>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
+          >
+            <option value="device_id">Mã thiết bị (DEVICE_ID)</option>
+            <option value="name">Tên thiết bị</option>
+            <option value="device_type">Loại thiết bị</option>
+            <option value="switch_status">Trạng thái Đóng/Cắt</option>
+            <option value="scada_status">Tín hiệu SCADA</option>
+            <option value="battery_status">Tình trạng ắc quy</option>
+            <option value="pole_number">Số trụ / Giá trị số (Numerical)</option>
+          </select>
+          <button
+            onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-slate-700 transition-colors flex items-center gap-1"
+            title="Đổi chiều sắp xếp"
+          >
+            {sortOrder === 'asc' ? 'Tăng dần (A-Z) ▲' : 'Giảm dần (Z-A) ▼'}
+          </button>
+        </div>
+        <div className="text-slate-500 font-medium">
+          Đang hiển thị <span className="font-bold text-slate-800">{sortedDevices.length}</span> kết quả đã lọc
+        </div>
       </div>
 
       {/* Bulk Actions Toolbar */}
       <BulkActionsBar
         selectedCount={selectedIds.length}
-        totalFilteredCount={devices.length}
+        totalFilteredCount={sortedDevices.length}
         onSelectAllFiltered={handleSelectAllFiltered}
         onClearSelection={handleClearSelection}
         onOpenBulkStatusModal={() => setBulkStatusModalOpen(true)}
         onOpenBulkExportModal={() => setBulkExportModalOpen(true)}
         onQuickUpdateStatus={handleQuickUpdateStatus}
-        canUpdate={!isGuest() && hasPermission('equipment:update')}
+        canUpdate={!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER'))}
       />
 
       {/* Devices Data Table */}
@@ -610,7 +847,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
             <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
             Đang tải dữ liệu thiết bị...
           </div>
-        ) : devices.length === 0 ? (
+        ) : sortedDevices.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <Zap className="w-10 h-10 mx-auto text-slate-300 mb-2" />
             <p className="text-xs font-semibold">Không tìm thấy thiết bị nào phù hợp</p>
@@ -632,16 +869,16 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                   </th>
                   <th className="py-3 px-4">DEVICE_ID</th>
                   <th className="py-3 px-4">Tên Thiết Bị / Vị Trí</th>
-                  <th className="py-3 px-4">Loại</th>
-                  <th className="py-3 px-4">Trạm & Phát Tuyến</th>
+                  <th className="py-3 px-4 hidden sm:table-cell">Loại</th>
+                  <th className="py-3 px-4 hidden md:table-cell">Trạm & Phát Tuyến</th>
                   <th className="py-3 px-4 text-center">Trạng Thái Đóng/Cắt</th>
-                  <th className="py-3 px-4 text-center">SCADA (Hiển thị)</th>
-                  <th className="py-3 px-4 text-center">Ắc Quy (LBS/REC)</th>
+                  <th className="py-3 px-4 text-center hidden lg:table-cell">SCADA (Hiển thị)</th>
+                  <th className="py-3 px-4 text-center hidden xl:table-cell">Ắc Quy (LBS/REC)</th>
                   <th className="py-3 px-4 text-right">Thao Tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {devices.map(device => {
+                {sortedDevices.map(device => {
                   const isSelected = selectedIds.includes(device.id);
                   return (
                     <tr
@@ -675,7 +912,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-4 hidden sm:table-cell">
                         <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold ${
                           (device.device_type === 'RCL' || device.device_type === 'REC') ? 'bg-purple-100 text-purple-800 border border-purple-200' :
                           device.device_type === 'LBS' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
@@ -686,14 +923,14 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 text-[11px]">
+                      <td className="py-3.5 px-4 text-[11px] hidden md:table-cell">
                         <div className="font-semibold text-slate-800 flex items-center gap-1">
                           <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{device.substation_name || 'N/A'}</span>
+                          <span>{getNormalizedRelations(device).substationName}</span>
                         </div>
                         <div className="text-slate-500 flex items-center gap-1 mt-0.5">
                           <GitCommitHorizontal className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{device.feeder_name || 'N/A'}</span>
+                          <span>{getNormalizedRelations(device).feederName}</span>
                         </div>
                       </td>
 
@@ -711,7 +948,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="py-3.5 px-4 text-center hidden lg:table-cell">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
                           device.scada_status === 'SIGNAL' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
                           device.scada_status === 'NO_SIGNAL' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
@@ -722,7 +959,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="py-3.5 px-4 text-center hidden xl:table-cell">
                         {(device.device_type === 'LBS' || device.device_type === 'RCL' || device.device_type === 'REC') ? (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
                             device.battery_status === 'GOOD' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
@@ -828,7 +1065,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-            {devices.map(device => (
+            {sortedDevices.map(device => (
               <DeviceCard 
                 key={device.id} 
                 device={device} 
@@ -836,11 +1073,34 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                 onEdit={handleOpenEditModal}
                 onDelete={handleDelete}
                 isGuest={isGuest()}
-                hasPermission={hasPermission}
+                hasRole={hasRole}
                 isSelected={selectedIds.includes(device.id)}
                 onToggleSelect={handleToggleSelectDevice}
+                getNormalizedRelations={getNormalizedRelations}
               />
             ))}
+          </div>
+        )}
+
+        {nextCursor && (
+          <div className="mt-6 flex justify-center">
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 flex items-center transition-colors shadow-sm"
+            >
+              {loadingMore ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Đang tải...
+                </>
+              ) : (
+                'Tải thêm thiết bị'
+              )}
+            </button>
           </div>
         )}
       </div>
@@ -935,7 +1195,14 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                   <label className="block font-bold text-slate-700 mb-1">Trạm 110kV</label>
                   <select
                     value={formData.substation_id}
-                    onChange={e => setFormData({ ...formData, substation_id: e.target.value, feeder_id: '' })}
+                    onChange={e => {
+                      const newSubId = e.target.value;
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        substation_id: newSubId, 
+                        feeder_id: '' 
+                      }));
+                    }}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                   >
                     <option value="">-- Chưa gán Trạm --</option>
@@ -974,7 +1241,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
               {(formData.device_type === 'LBS' || formData.device_type === 'REC') && (
                 <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Dòng cài đặt (A)</label>
+                    <label className="block font-bold text-slate-700 mb-1">Dòng chỉnh định</label>
                     <input
                       type="text"
                       placeholder="VD: 300A, 400A..."
@@ -1316,7 +1583,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
         onClose={() => setProposalModalOpen(false)}
         onSuccess={() => {
           setSuccess('Đã gửi đề xuất thành công! Cấp quản lý sẽ xem xét và phê duyệt.');
-          fetchDevices();
+          fetchDevices({ limit: 10 });
         }}
         mode={proposalMode}
         device={proposalTargetDevice}
@@ -1331,7 +1598,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
         selectedDevices={selectedDevices}
         onSuccess={(msg) => {
           setSuccess(msg);
-          fetchDevices();
+          fetchDevices({ limit: 10 });
           setSelectedIds([]);
         }}
       />
@@ -1358,7 +1625,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
           }}
           onSuccess={() => {
             setSuccess('Đã chụp và lưu ảnh định vị tọa độ thiết bị thành công!');
-            fetchDevices();
+            fetchDevices({ limit: 10 });
           }}
         />
       )}

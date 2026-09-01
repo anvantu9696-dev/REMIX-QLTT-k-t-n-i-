@@ -26,9 +26,9 @@ interface UsageDetails {
 }
 
 interface FeedersPageProps {
-  onNavigateToDevices?: (feederId: number) => void;
+  onNavigateToDevices?: (feederId: number | string) => void;
   onNavigateToLoops?: () => void;
-  selectedSubstationId?: number;
+  selectedSubstationId?: number | string;
 }
 
 export const FeedersPage: React.FC<FeedersPageProps> = ({
@@ -36,12 +36,24 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
   onNavigateToLoops,
   selectedSubstationId
 }) => {
-  const { isGuest, hasPermission } = useAuth();
-  const [feeders, setFeeders] = useState<Feeder[]>([]);
+  const { isGuest, hasRole } = useAuth();
+  const [feeders, setFeeders] = useState<any[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [substations, setSubstations] = useState<Substation[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [substationFilter, setSubstationFilter] = useState<string>(selectedSubstationId ? String(selectedSubstationId) : '');
+  
+  // Sync prop changes (e.g. from browser back/forward navigation)
+  useEffect(() => {
+    if (selectedSubstationId !== undefined) {
+      setSubstationFilter(String(selectedSubstationId));
+    } else {
+      setSubstationFilter('');
+    }
+  }, [selectedSubstationId]);
+
   const [statusFilter, setStatusFilter] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -102,15 +114,43 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
       const res = await api.getFeeders({
         search,
         substation_id: substationFilter,
-        status: statusFilter
+        status: statusFilter,
+        limit: 10
       });
       if (res.success) {
         setFeeders(res.data);
+        setNextCursor(res.nextCursor || null);
       }
     } catch (err: any) {
       setError(err.message || 'Không thể tải danh sách Phát tuyến');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.getFeeders({
+        search,
+        substation_id: substationFilter,
+        status: statusFilter,
+        limit: 10,
+        lastDocId: nextCursor
+      });
+      if (res.success) {
+        setFeeders(prev => {
+          const existing = new Set(prev.map(f => f.id));
+          const newItems = res.data.filter(f => !existing.has(f.id));
+          return [...prev, ...newItems];
+        });
+        setNextCursor(res.nextCursor || null);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Không thể tải thêm danh sách Phát tuyến');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -175,7 +215,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
 
   const handleOpenDeleteConfirm = (feeder: Feeder) => {
     if (isGuest()) return;
-    if (!hasPermission('equipment:delete')) {
+    if (!hasRole('ADMIN')) {
       setError('Bạn không có quyền thực hiện thao tác xóa phát tuyến.');
       return;
     }
@@ -249,7 +289,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
           </p>
         </div>
 
-        {!isGuest() && hasPermission('equipment:create') && (
+        {!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER')) && (
           <button
             onClick={handleOpenAddModal}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm shrink-0"
@@ -396,7 +436,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
 
                         {!isGuest() && (
                           <>
-                            {hasPermission('equipment:update') && (
+                            {(hasRole('ADMIN') || hasRole('MANAGER')) && (
                               <button
                                 onClick={() => handleOpenEditModal(feeder)}
                                 className="p-1.5 text-slate-600 hover:text-blue-600 rounded hover:bg-slate-100 transition-colors"
@@ -405,7 +445,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
                                 <Edit2 className="w-4 h-4" />
                               </button>
                             )}
-                            {hasPermission('equipment:delete') && (
+                            {hasRole('ADMIN') && (
                               <button
                                 onClick={() => handleOpenDeleteConfirm(feeder)}
                                 className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 transition-colors"
@@ -834,6 +874,17 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {nextCursor && (
+        <div className="mt-6 flex justify-center pb-6">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center transition-colors shadow-sm font-medium"
+          >
+            {loadingMore ? 'Đang tải...' : 'Tải thêm phát tuyến'}
+          </button>
         </div>
       )}
     </div>

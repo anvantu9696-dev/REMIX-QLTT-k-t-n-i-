@@ -1,168 +1,153 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, RoleCode, ScopeType } from '../types';
+import { User, RoleCode } from '../types';
 import { api, setAuthToken } from '../lib/api';
+import { auth, db } from '../lib/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut, onIdTokenChanged } from 'firebase/auth';
+
 
 interface AuthContextType {
   user: User | null;
-  permissions: string[];
   isLoading: boolean;
   login: (u: string, p: string) => Promise<any>;
-  guestLogin: () => Promise<any>;
+  registerUser: (email: string, p: string, fullName: string) => Promise<any>;
   logout: () => void;
-  hasPermission: (perm: string) => boolean;
   hasRole: (role: RoleCode) => boolean;
   isGuest: () => boolean;
-  hasScope: (type: ScopeType) => boolean;
-  simulatedRole: RoleCode | null;
-  setSimulatedRole: (role: RoleCode | null) => void;
   isRealAdmin: boolean;
+  guestLogin: () => Promise<any>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const rolePermissionsMap: Record<string, string[]> = {
-  ADMIN: ['*'],
-  CAN_BO_PHUONG_THUC: ['equipment:read', 'equipment:create', 'equipment:update', 'tasks:read', 'tasks:create', 'tasks:update', 'documents:read', 'documents:create', 'reports:read', 'audit:read', 'DEVICE_VIEW', 'GIS_VIEW', 'LOOP_VIEW', 'FEEDER_VIEW', 'SUBSTATION_VIEW', 'CHANGE_REQUEST_VIEW', 'proposals:read', 'proposals:review'],
-  TRUONG_CA: ['equipment:read', 'equipment:update', 'tasks:read', 'tasks:create', 'tasks:update', 'documents:read', 'reports:read', 'DEVICE_VIEW', 'GIS_VIEW', 'LOOP_VIEW', 'FEEDER_VIEW', 'SUBSTATION_VIEW', 'CHANGE_REQUEST_VIEW', 'proposals:read', 'proposals:review'],
-  PHO_CA: ['equipment:read', 'equipment:update', 'tasks:read', 'tasks:create', 'tasks:update', 'documents:read', 'reports:read', 'DEVICE_VIEW', 'GIS_VIEW', 'LOOP_VIEW', 'FEEDER_VIEW', 'SUBSTATION_VIEW', 'CHANGE_REQUEST_VIEW', 'proposals:read', 'proposals:review'],
-  DOI_TRUONG: ['equipment:read', 'tasks:read', 'tasks:update', 'documents:read', 'reports:read', 'DEVICE_VIEW', 'GIS_VIEW', 'LOOP_VIEW', 'FEEDER_VIEW', 'SUBSTATION_VIEW', 'CHANGE_REQUEST_VIEW', 'proposals:create', 'proposals:read', 'proposals:review'],
-  NHAN_VIEN_VAN_HANH: ['equipment:read', 'tasks:read', 'tasks:update', 'documents:read', 'reports:read', 'DEVICE_VIEW', 'GIS_VIEW', 'LOOP_VIEW', 'FEEDER_VIEW', 'SUBSTATION_VIEW', 'DEVICE_PROPOSE_CREATE', 'DEVICE_PROPOSE_UPDATE', 'DEVICE_PROPOSE_DELETE', 'DEVICE_IMAGE_UPLOAD', 'CHANGE_REQUEST_CREATE', 'CHANGE_REQUEST_VIEW', 'proposals:create', 'proposals:read'],
-  FIELD_OPERATOR: ['equipment:read', 'tasks:read', 'tasks:create', 'tasks:update', 'documents:read', 'reports:read', 'DEVICE_VIEW', 'GIS_VIEW', 'LOOP_VIEW', 'FEEDER_VIEW', 'SUBSTATION_VIEW', 'DEVICE_PROPOSE_CREATE', 'DEVICE_PROPOSE_UPDATE', 'DEVICE_PROPOSE_DELETE', 'DEVICE_IMAGE_UPLOAD', 'CHANGE_REQUEST_CREATE', 'CHANGE_REQUEST_VIEW', 'proposals:create', 'proposals:read'],
-  KHACH: ['equipment:read', 'documents:read', 'reports:read', 'tasks:read', 'DEVICE_VIEW', 'GIS_VIEW', 'LOOP_VIEW', 'FEEDER_VIEW', 'SUBSTATION_VIEW']
-};
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [simulatedRole, setSimulatedRole] = useState<RoleCode | null>(null);
 
   useEffect(() => {
-    checkCurrentAuth();
-  }, []);
-
-  const checkCurrentAuth = async () => {
-    const token = localStorage.getItem('grid_auth_token');
-    if (!token) {
-      setUser(null);
-      setPermissions([]);
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const res = await api.getMe();
-      if (res.success && res.user) {
-        setUser(res.user);
-        setPermissions(res.permissions || []);
+    const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
+      setIsLoading(true);
+      if (firebaseUser) {
+        try {
+          const idToken = await firebaseUser.getIdToken();
+          setAuthToken(idToken);
+          
+          const fullName = (firebaseUser as any).tmpFullName || firebaseUser.displayName || '';
+          const res = await api.syncAuth({
+            idToken,
+            full_name: fullName,
+            photoURL: firebaseUser.photoURL || ''
+          });
+          
+          
+          if (res.success && res.user) {
+             const data = res.user;
+             const mappedUser: User = {
+                id: (data as any).uid || data.id || firebaseUser.uid,
+                username: data.username || firebaseUser.email,
+                employee_code: data.employee_code || '',
+                full_name: data.full_name || firebaseUser.displayName || '',
+                email: data.email || firebaseUser.email,
+                unit: data.unit || '',
+                team: data.team || '',
+                title: data.title || '',
+                status: data.status || 'ACTIVE',
+                roles: (data as any).roles || ((data as any).role ? [(data as any).role] : []),
+                phone: data.phone || '',
+                created_at: (data as any).createdAt || data.created_at || new Date().toISOString(),
+                updated_at: (data as any).updatedAt || data.updated_at || new Date().toISOString(),
+              };
+              setUser(mappedUser);
+          } else {
+             setUser(null);
+             if (res.message) {
+                // Dispatch event to show error if needed, but for now just logout if forbidden
+                console.warn('Sync failed:', res.message);
+                if ( (res as any).errorType === 'USER_DISABLED' || (res as any).errorType === 'USER_LOCKED') {
+                    await signOut(auth);
+                    setAuthToken(null);
+                }
+             }
+          }
+        } catch (error: any) {
+          console.error("Error fetching user profile:", error);
+          setUser(null);
+          setAuthToken(null);
+          if (error.data && ['USER_DISABLED', 'USER_LOCKED'].includes((error.data as any).errorType)) {
+             await signOut(auth);
+          }
+        }
       } else {
         setUser(null);
-        setPermissions([]);
+        setAuthToken(null);
       }
-    } catch (err) {
-      setUser(null);
-      setPermissions([]);
-      setAuthToken(null);
-    } finally {
       setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setUser(null);
+      setAuthToken(null);
+    };
+    window.addEventListener('grid_auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('grid_auth_expired', handleAuthExpired);
+  }, []);
+
+  const login = async (email: string, p: string) => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, p);
+      return { success: true, user: userCredential.user };
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
+  };
+  
+  const registerUser = async (email: string, p: string, fullName: string) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, p);
+      await updateProfile(userCredential.user, { displayName: fullName }).catch(console.error);
+      return { success: true, user: userCredential.user, fullName };
+    } catch (error: any) {
+      let msg = error.message;
+      if (error.code === 'auth/email-already-in-use') {
+        msg = 'Email này đã được sử dụng';
+      }
+      return { success: false, message: msg };
     }
   };
 
-  const login = async (username: string, p: string) => {
-    const res = await api.login(username, p);
-    if (res.success && res.token) {
-      setAuthToken(res.token);
-      setUser(res.user);
-      setPermissions(res.permissions || []);
-      setSimulatedRole(null);
-    }
-    return res;
-  };
+  const guestLogin = async () => { return { success: false, message: 'Not supported' }; };
 
-  const guestLogin = async () => {
-    const res = await api.guestLogin();
-    if (res.success && res.token) {
-      setAuthToken(res.token);
-      setUser(res.user);
-      setPermissions(res.permissions || []);
-      setSimulatedRole(null);
-    }
-    return res;
-  };
-
-  const logout = () => {
+  const logout = async () => {
+    await signOut(auth);
     setAuthToken(null);
     setUser(null);
-    setPermissions([]);
-    setSimulatedRole(null);
   };
 
   const isRealAdmin = user?.roles?.includes('ADMIN') || false;
 
-  // Effective user for UI and checks
-  const effectiveUser = React.useMemo(() => user ? {
-    ...user,
-    roles: simulatedRole ? [simulatedRole] : (user.roles || [])
-  } : null, [user, simulatedRole]);
-
-  const hasPermission = (perm: string): boolean => {
-    if (!effectiveUser) return false;
-    const currentRole = simulatedRole || (effectiveUser.roles?.[0]);
-    if (currentRole === 'ADMIN') return true;
-    if (effectiveUser.roles?.includes('ADMIN')) return true;
-
-    const hasBase = permissions.includes(perm);
-    const hasFallback = 
-      (perm.endsWith(':import') && (permissions.includes('GRID_DATA_IMPORT') || permissions.includes(perm))) ||
-      (perm.endsWith(':export') && (permissions.includes('reports:read') || permissions.includes('GRID_DATA_IMPORT') || permissions.includes(perm)));
-
-    if (simulatedRole) {
-      const allowed = rolePermissionsMap[simulatedRole] || [];
-      if (allowed.includes('*') || allowed.includes(perm)) return true;
-      if (perm.endsWith(':import') && (allowed.includes('GRID_DATA_IMPORT') || allowed.includes(perm))) return true;
-      if (perm.endsWith(':export') && (allowed.includes('reports:read') || allowed.includes('GRID_DATA_IMPORT') || allowed.includes(perm))) return true;
-      return false;
-    }
-    return hasBase || hasFallback;
-  };
-
   const hasRole = (role: RoleCode): boolean => {
-    if (!effectiveUser || !effectiveUser.roles) return false;
-    if (simulatedRole) {
-      return simulatedRole === role;
-    }
-    return effectiveUser.roles.includes(role);
+    if (!user || !user.roles) return false;
+    return user.roles.includes(role) || user.roles.includes('ADMIN');
   };
 
   const isGuest = (): boolean => {
-    const currentRole = simulatedRole || (effectiveUser?.roles?.[0]);
-    if (currentRole === 'KHACH') return true;
-    if (!effectiveUser || !effectiveUser.roles) return false;
-    return effectiveUser.roles.length === 1 && effectiveUser.roles[0] === 'KHACH';
-  };
-
-  const hasScope = (type: ScopeType): boolean => {
-    if (!effectiveUser || !effectiveUser.scopes) return false;
-    const currentRole = simulatedRole || (effectiveUser.roles?.[0]);
-    if (currentRole === 'ADMIN') return true;
-    return effectiveUser.scopes.some(s => s.scope_type === type || s.scope_type === 'SYSTEM');
+    if (!user || !user.roles) return false;
+    return user.roles.includes('VIEWER') || user.roles.includes('KHACH' as any);
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user: effectiveUser,
-        permissions,
+        user,
         isLoading,
         login,
+        registerUser,
         guestLogin,
         logout,
-        hasPermission,
         hasRole,
         isGuest,
-        hasScope,
-        simulatedRole,
-        setSimulatedRole,
         isRealAdmin
       }}
     >

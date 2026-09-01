@@ -29,9 +29,9 @@ async function test() {
     console.log("Updated Name:", updated.name);
 
     // 3. Delete
-    await deviceRepo.delete(created.id, 'op_reg_delete_1');
+    await deviceRepo.delete(created.id, 'op_reg_delete_1', 'test_user');
     const finalDoc = await deviceRepo.getById(created.id);
-    console.log("Is deleted:", finalDoc?.isDeleted);
+    console.log("Deleted exists:", !!finalDoc);
 
     console.log("Device Regression Test Passed");
 }

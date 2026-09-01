@@ -1,15 +1,20 @@
 import { Router } from 'express';
-import { dbQuery } from '../db';
-import { authenticateToken, requirePermission, AuthenticatedRequest } from '../middleware';
+import { authenticateToken, requireRole, AuthenticatedRequest } from '../middleware.js';
 
 const router = Router();
 router.use(authenticateToken);
 
 // GET /api/roles - Get list of roles and permissions
-router.get('/', requirePermission('users:read'), (req: AuthenticatedRequest, res) => {
-  const roles = dbQuery(`SELECT id, code, name, description, level, status FROM roles WHERE status = 'ACTIVE' ORDER BY level ASC`);
-  const permissions = dbQuery(`SELECT id, code, module, description, action FROM permissions ORDER BY module, code`);
-
+router.get('/', requireRole(['ADMIN']), (req: AuthenticatedRequest, res) => {
+  const roles = [
+    { id: 1, code: 'ADMIN', name: 'ADMIN', description: 'Quản trị viên', level: 1, status: 'ACTIVE' },
+    { id: 2, code: 'MANAGER', name: 'MANAGER', description: 'Quản lý', level: 2, status: 'ACTIVE' },
+    { id: 3, code: 'STAFF', name: 'STAFF', description: 'Nhân viên', level: 3, status: 'ACTIVE' },
+    { id: 4, code: 'VIEWER', name: 'VIEWER', description: 'Khách', level: 4, status: 'ACTIVE' },
+  ];
+  
+  const permissions: any[] = [];
+  
   return res.json({
     success: true,
     roles,

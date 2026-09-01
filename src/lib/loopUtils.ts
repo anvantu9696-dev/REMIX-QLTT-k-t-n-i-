@@ -4,6 +4,7 @@ export interface StandardizedLoop extends Loop {
   schemaVersion: number;
   createdAt: string;
   updatedAt: string;
+  status: 'OPEN' | 'CLOSED' | 'INACTIVE' | 'ACTIVE';
 }
 
 export const normalizeLoop = (rawLoop: any): StandardizedLoop => {
@@ -13,10 +14,10 @@ export const normalizeLoop = (rawLoop: any): StandardizedLoop => {
   return {
     ...rawLoop,
     id: Number(rawLoop.id) || 0,
-    loop_id: rawLoop.loop_id || 'unknown',
-    name: rawLoop.name || 'Unnamed Loop',
-    version: typeof rawLoop.version === 'number' ? rawLoop.version : 1,
-    schemaVersion: typeof rawLoop.schemaVersion === 'number' ? rawLoop.schemaVersion : 1,
+    loop_id: rawLoop.loop_id || rawLoop.id || 'unknown',
+    name: rawLoop.name || rawLoop.loop_name || 'Khép vòng chưa đặt tên',
+    version: Number(rawLoop.version) > 0 ? Number(rawLoop.version) : 1,
+    schemaVersion: Number(rawLoop.schemaVersion) || Number(rawLoop.schema_version) || 1,
     createdAt,
     updatedAt,
     created_at: createdAt,

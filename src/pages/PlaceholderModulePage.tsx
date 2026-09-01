@@ -30,7 +30,7 @@ export const PlaceholderModulePage: React.FC<PlaceholderModulePageProps> = ({
 
         <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 shrink-0">
           <p className="text-[11px] text-slate-500">Phạm vi tác nghiệp hiện tại:</p>
-          <p className="font-bold text-slate-900">{user?.scopes?.[0]?.scope_value || 'Toàn hệ thống'}</p>
+          <p className="font-bold text-slate-900">{user?.unit || 'Toàn hệ thống'}</p>
         </div>
       </div>
 
@@ -67,7 +67,7 @@ export const PlaceholderModulePage: React.FC<PlaceholderModulePageProps> = ({
             </li>
             <li className="flex items-center space-x-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Phạm vi Scope: <strong>{user?.scopes?.[0]?.scope_type} - {user?.scopes?.[0]?.scope_value}</strong></span>
+              <span>Phạm vi Scope: <strong>{'Unit'} - {user?.unit}</strong></span>
             </li>
           </ul>
         </div>

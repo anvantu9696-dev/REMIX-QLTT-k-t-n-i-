@@ -33,7 +33,7 @@ import { Checklist, InspectionSchedule, Device, InspectionFrequency, ChecklistIt
 import { formatDateTime, formatDate } from '../utils/dateTime';
 
 export const ChecklistsPage: React.FC = () => {
-  const { hasPermission, hasRole } = useAuth();
+  const { hasRole } = useAuth();
   const [activeTab, setActiveTab] = useState<'templates' | 'schedules'>('templates');
 
   // Checklists State
@@ -307,8 +307,8 @@ export const ChecklistsPage: React.FC = () => {
       const res = await api.createSchedule({
         title: schTitle,
         frequency: schFrequency,
-        device_id: parseInt(schDeviceId, 10),
-        checklist_id: parseInt(schChecklistId, 10),
+        device_id: schDeviceId ? schDeviceId : null,
+        checklist_id: schChecklistId ? schChecklistId : null,
         assigned_team: schTeam,
         next_run_date: schNextDate
       });
@@ -391,16 +391,6 @@ export const ChecklistsPage: React.FC = () => {
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${syncingTemplates ? 'animate-spin' : ''}`} />
                 <span>{syncingTemplates ? 'Đang đồng bộ...' : 'Đồng bộ Mẫu Chuẩn EVN'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  resetChecklistForm();
-                  setShowChecklistModal(true);
-                }}
-                className="inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition space-x-2 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tạo Mẫu Checklist Mới</span>
               </button>
             </>
           ) : (
@@ -703,7 +693,7 @@ export const ChecklistsPage: React.FC = () => {
                           </td>
                           <td className="p-3.5 text-right">
                             {s.status !== 'DELETED' ? (
-                              hasPermission('PERIODIC_INSPECTION_DELETE') && (
+                              hasRole('ADMIN') && (
                                 <button
                                   onClick={() => setDeletingSchedule(s)}
                                   className="p-1.5 text-slate-400 hover:text-red-600 rounded cursor-pointer"

@@ -1,62 +1,66 @@
-import { Router } from 'express';
-import { dbQuery } from '../db';
-import { authenticateToken, requirePermission, AuthenticatedRequest } from '../middleware';
+import { Router, Response } from 'express';
+import { authenticateToken, requireRole, AuthenticatedRequest } from '../middleware';
+import { getTargetFirestore } from '../firebaseAdmin';
 
 const router = Router();
 router.use(authenticateToken);
+router.use(requireRole(['ADMIN', 'MANAGER']));
 
-// GET /api/audit-logs
-router.get('/', requirePermission('audit:read'), (req: AuthenticatedRequest, res) => {
-  const { search, module, result, page = '1', limit = '50', from_date, to_date } = req.query;
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+  const { 
+    search, module, action, result, 
+    start_date, end_date, 
+    page = '1', limit = '20' 
+  } = req.query;
 
-  let query = `SELECT id, user_id, username, user_fullname, action, module, target_id, details, result, ip_address, created_at FROM audit_logs WHERE 1=1`;
-  let countQuery = `SELECT COUNT(*) as total FROM audit_logs WHERE 1=1`;
-  const params: any[] = [];
+  try {
+    const db = getTargetFirestore();
+    const snap = await db.collection('audit_logs').orderBy('timestamp', 'desc').get();
+    let logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-  let whereClauses = '';
-  if (search) {
-    whereClauses += ` AND (username LIKE ? OR user_fullname LIKE ? OR action LIKE ? OR details LIKE ?)`;
-    const searchPattern = `%${search}%`;
-    params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    if (module) logs = logs.filter(l => l.module === module);
+    if (action) logs = logs.filter(l => l.action === action);
+    if (result) logs = logs.filter(l => l.result === result);
+    
+    if (start_date) {
+        const sd = new Date(start_date as string).getTime();
+        logs = logs.filter(l => new Date(l.timestamp).getTime() >= sd);
+    }
+    if (end_date) {
+        // end of day logic
+        const ed = new Date(end_date as string);
+        ed.setHours(23,59,59,999);
+        logs = logs.filter(l => new Date(l.timestamp).getTime() <= ed.getTime());
+    }
+
+    if (search) {
+      const term = (search as string).toLowerCase();
+      logs = logs.filter(l => 
+        (l.username && l.username.toLowerCase().includes(term)) ||
+        (l.user_fullname && l.user_fullname.toLowerCase().includes(term)) ||
+        (l.details && l.details.toLowerCase().includes(term)) ||
+        (l.target_id && String(l.target_id).toLowerCase().includes(term))
+      );
+    }
+
+    const total = logs.length;
+    const pageSize = parseInt(limit as string, 10) || 20;
+    const currentPage = parseInt(page as string, 10) || 1;
+    const offset = (currentPage - 1) * pageSize;
+
+    const pagedLogs = logs.slice(offset, offset + pageSize);
+
+    return res.json({
+      success: true,
+      data: pagedLogs,
+      total,
+      page: currentPage,
+      limit: pageSize,
+      total_pages: Math.ceil(total / pageSize)
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Lỗi khi lấy nhật ký hệ thống: ' + error.message });
   }
-
-  if (module) {
-    whereClauses += ` AND module = ?`;
-    params.push(module);
-  }
-
-  if (result) {
-    whereClauses += ` AND result = ?`;
-    params.push(result);
-  }
-
-  if (from_date) {
-    whereClauses += ` AND created_at >= ?`;
-    params.push(`${from_date} 00:00:00`);
-  }
-
-  if (to_date) {
-    whereClauses += ` AND created_at <= ?`;
-    params.push(`${to_date} 23:59:59`);
-  }
-
-  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-  const pageSize = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
-  const offset = (pageNum - 1) * pageSize;
-
-  const totalRow = dbQuery(countQuery + whereClauses, params)[0];
-  const total = totalRow ? (totalRow.total as number) : 0;
-
-  query += whereClauses + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-  const logs = dbQuery(query, [...params, pageSize, offset]);
-
-  return res.json({
-    success: true,
-    data: logs,
-    total,
-    page: pageNum,
-    pageSize
-  });
 });
 
 export default router;

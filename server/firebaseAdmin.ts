@@ -6,6 +6,7 @@ import {
 } from 'firebase-admin/app';
 
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 
 const TARGET_PROJECT_ID = 'gen-lang-client-0467602660';
 
@@ -36,6 +37,11 @@ export function getTargetAdminApp() {
     },
     ADMIN_APP_NAME
   );
+}
+
+export function getTargetAuth() {
+  const app = getTargetAdminApp();
+  return getAuth(app);
 }
 
 let targetDbInstance: FirebaseFirestore.Firestore | null = null;

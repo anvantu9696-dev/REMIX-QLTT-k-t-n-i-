@@ -41,12 +41,14 @@ import {
   Archive,
   FolderArchive,
   Clock4,
-  CheckCheck
+  CheckCheck,
+  Printer,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Task, TaskPriority, TaskStatus, Checklist, User as UserType, TaskHistory } from '../types';
 import { formatDateTime, formatRelativeTime, formatDate } from '../utils/dateTime';
+import { PrintChecklistModal } from '../components/PrintChecklistModal';
 
 export const TasksPage: React.FC = () => {
   const { user } = useAuth();
@@ -111,7 +113,8 @@ export const TasksPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   // Submit checklist results state
-  const [itemResults, setItemResults] = useState<Record<number, { result_value: string; is_pass: boolean; notes: string }>>({});
+  const [printDeviceChecklist, setPrintDeviceChecklist] = useState<any>(null);
+  const [itemResults, setItemResults] = useState<Record<string, { result_value: string; is_pass: boolean; notes: string }>>({});
 
   useEffect(() => {
     try {
@@ -122,15 +125,12 @@ export const TasksPage: React.FC = () => {
         setStatusFilter(statusParam);
       }
       if (taskIdParam) {
-        const tId = parseInt(taskIdParam, 10);
-        if (!isNaN(tId)) {
-          api.getTask(tId).then((res) => {
-            if (res.success && res.data) {
-              setSelectedTask(res.data);
-              setShowDetailModal(true);
-            }
-          }).catch(console.error);
-        }
+        api.getTask(taskIdParam).then((res) => {
+          if (res.success && res.data) {
+            setSelectedTask(res.data);
+            setShowDetailModal(true);
+          }
+        }).catch(console.error);
       }
     } catch (e) {
       console.error('Error parsing URL params:', e);
@@ -200,7 +200,7 @@ export const TasksPage: React.FC = () => {
     try {
       const [devRes, userRes, chkRes] = await Promise.all([
         api.getDevices(),
-        api.getUsers(),
+        api.getAssignableUsers(),
         api.getChecklists()
       ]);
       if (devRes.success) setDevices(devRes.data);
@@ -223,11 +223,27 @@ export const TasksPage: React.FC = () => {
         setSelectedTask(res.data);
         setDetailActiveTab('content');
         // Initialize checklist item results state
-        const initialResults: Record<number, { result_value: string; is_pass: boolean; notes: string }> = {};
+        const initialResults: Record<string, { result_value: string; is_pass: boolean; notes: string }> = {};
+        
+        if (res.data.task_devices && res.data.task_devices.length > 0) {
+          res.data.task_devices.forEach((td: any) => {
+            if (td.checklist_items) {
+              td.checklist_items.forEach((item: any) => {
+                const existingRes = td.results?.find((r: any) => r.checklist_item_id === item.id);
+                initialResults[`${td.device_id}_${item.id}`] = {
+                  result_value: existingRes?.result_value || '',
+                  is_pass: existingRes ? Boolean(existingRes.is_pass) : true,
+                  notes: existingRes?.notes || ''
+                };
+              });
+            }
+          });
+        }
+        
         if (res.data.checklist_items) {
           res.data.checklist_items.forEach((item: any) => {
-            const existingRes = res.data.results?.find((r: any) => r.checklist_item_id === item.id);
-            initialResults[item.id] = {
+            const existingRes = res.data.results?.find((r: any) => r.checklist_item_id === item.id && !r.device_id);
+            initialResults[`legacy_${item.id}`] = {
               result_value: existingRes?.result_value || '',
               is_pass: existingRes ? Boolean(existingRes.is_pass) : true,
               notes: existingRes?.notes || ''
@@ -305,9 +321,9 @@ export const TasksPage: React.FC = () => {
     try {
       const payload: any = {
         title: formTitle,
-        assigned_to_user_id: formAssignedUserId ? parseInt(formAssignedUserId, 10) : null,
+        assigned_to_user_id: formAssignedUserId ? formAssignedUserId : null,
         team: formTeam,
-        checklist_id: formChecklistId ? parseInt(formChecklistId, 10) : null,
+        checklist_id: formChecklistId ? formChecklistId : null,
         due_date: formDueDate,
         priority: formPriority,
         content: formContent,
@@ -317,7 +333,7 @@ export const TasksPage: React.FC = () => {
       if (formDeviceSelectionMode === 'multiple') {
         payload.device_ids = formSelectedDeviceIds;
       } else if (formDeviceSelectionMode === 'single') {
-        payload.device_id = formDeviceId ? parseInt(formDeviceId, 10) : null;
+        payload.device_id = formDeviceId ? formDeviceId : null;
       } else {
         payload.device_id = null;
       }
@@ -413,11 +429,18 @@ export const TasksPage: React.FC = () => {
     setSubmitting(true);
 
     try {
-      const formattedResults = Object.entries(itemResults).map(([itemIdStr, val]: [string, { result_value: string; is_pass: boolean; notes: string }]) => {
-        const itemId = parseInt(itemIdStr, 10);
-        const itemObj = selectedTask.checklist_items?.find(i => i.id === itemId);
+      const formattedResults = Object.entries(itemResults).map(([key, val]: [string, any]) => {
+        const [devIdStr, itemIdStr] = key.split('_');
+        let itemObj;
+        if (devIdStr === 'legacy') {
+           itemObj = selectedTask.checklist_items?.find((i: any) => String(i.id) === String(itemIdStr));
+        } else {
+           const td = selectedTask.task_devices?.find((t: any) => String(t.device_id) === String(devIdStr));
+           itemObj = td?.checklist_items?.find((i: any) => String(i.id) === String(itemIdStr));
+        }
         return {
-          checklist_item_id: itemId,
+          device_id: devIdStr === 'legacy' ? undefined : parseInt(devIdStr, 10),
+          checklist_item_id: itemIdStr,
           item_content: itemObj?.content || '',
           standard_value: itemObj?.standard_value || '',
           unit: itemObj?.unit || '',
@@ -1807,21 +1830,202 @@ export const TasksPage: React.FC = () => {
                   )}
 
                   {/* CHECKLIST ITEMS & RESULTS */}
-                  {selectedTask.checklist_items && selectedTask.checklist_items.length > 0 && (
+                  {selectedTask.task_devices && selectedTask.task_devices.length > 0 ? (
+                    <div className="space-y-6 pt-2">
+                      {selectedTask.task_devices.map((td: any) => (
+                        <div key={td.id} className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                              <FileCheck2 className="w-4 h-4 text-blue-600" />
+                              <span>Checklist: {td.device_name} ({td.checklist_title || 'Chưa gắn mẫu'})</span>
+                            </h4>
+                            <div className="flex items-center space-x-3">
+                              <button
+                                type="button"
+                                onClick={() => setPrintDeviceChecklist(td)}
+                                className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold text-xs rounded-lg transition"
+                              >
+                                <Printer className="w-4 h-4" />
+                                <span>In Biên bản</span>
+                              </button>
+                              <span className="text-xs text-slate-500 font-medium">
+                                {td.checklist_items?.length || 0} tiêu chuẩn
+                              </span>
+                            </div>
+                          </div>
+
+                          {td.checklist_items && td.checklist_items.length > 0 && (
+                            <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-200">
+                              {td.checklist_items.map((item: any) => {
+                                const resKey = `${td.device_id}_${item.id}`;
+                                const resVal = itemResults[resKey] || { result_value: '', is_pass: true, notes: '' };
+                                const isEditable = checkIsAssignee(selectedTask) && ['IN_PROGRESS', 'ACCEPTED', 'RETURNED'].includes(selectedTask.status);
+                                return (
+                                  <div key={item.id} className="p-3.5 bg-white hover:bg-slate-50/50 transition space-y-2">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="space-y-0.5">
+                                        <span className="font-mono text-[11px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                          #{item.item_order} [{item.item_code}]
+                                        </span>
+                                        <p className="text-sm font-medium text-slate-900">{item.content}</p>
+                                        {item.standard_value && (
+                                          <p className="text-xs text-slate-500">
+                                            Tiêu chuẩn: <strong className="text-emerald-700">{item.standard_value}</strong>
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      {/* Inputs for Assigned Employee */}
+                                      {isEditable ? (
+                                        <div className="flex items-center space-x-2 shrink-0">
+      
+                                    {item.input_type === 'OPTION' && (() => {
+                                      let opts: string[] = [];
+                                      try {
+                                        opts = item.options_json ? JSON.parse(item.options_json) : [];
+                                      } catch(e) {}
+                                      return (
+                                        <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                                          {opts.map((opt: string) => (
+                                            <button
+                                              key={opt}
+                                              type="button"
+                                              onClick={() =>
+                                                setItemResults(prev => ({
+                                                  ...prev,
+                                                  [resKey]: { ...prev[resKey], is_pass: true, result_value: opt }
+                                                }))
+                                              }
+                                              className={`px-3 py-1 text-xs font-bold rounded-md transition ${
+                                                resVal.result_value === opt
+                                                  ? 'bg-blue-600 text-white shadow-xs'
+                                                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                                              }`}
+                                            >
+                                              {opt}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
+                                    {item.input_type === 'PASS_FAIL' && (
+                                            <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setItemResults(prev => ({
+                                                    ...prev,
+                                                    [resKey]: { ...prev[resKey], is_pass: true, result_value: 'ĐẠT' }
+                                                  }))
+                                                }
+                                                className={`px-3 py-1 text-xs font-bold rounded-md transition ${
+                                                  resVal.is_pass
+                                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900'
+                                                }`}
+                                              >
+                                                ĐẠT
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setItemResults(prev => ({
+                                                    ...prev,
+                                                    [resKey]: { ...prev[resKey], is_pass: false, result_value: 'KHÔNG ĐẠT' }
+                                                  }))
+                                                }
+                                                className={`px-3 py-1 text-xs font-bold rounded-md transition ${
+                                                  !resVal.is_pass
+                                                    ? 'bg-red-600 text-white shadow-xs'
+                                                    : 'text-slate-600 hover:text-slate-900'
+                                                }`}
+                                              >
+                                                K.ĐẠT
+                                              </button>
+                                            </div>
+                                          )}
+                                          {item.input_type === 'NUMBER' && (
+                                            <div className="flex items-center space-x-1">
+                                              <input
+                                                type="text"
+                                                placeholder="Giá trị"
+                                                value={resVal.result_value}
+                                                onChange={(e) =>
+                                                  setItemResults(prev => ({
+                                                    ...prev,
+                                                    [resKey]: { ...prev[resKey], result_value: e.target.value }
+                                                  }))
+                                                }
+                                                className="w-24 px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                                              />
+                                              <span className="text-xs text-slate-500 font-medium">{item.unit}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="text-right">
+                                          <span
+                                            className={`px-2.5 py-1 text-xs font-bold rounded-full ${
+                                              resVal.is_pass
+                                                ? 'bg-emerald-100 text-emerald-800'
+                                                : 'bg-red-100 text-red-800'
+                                            }`}
+                                          >
+                                            {resVal.result_value || (resVal.is_pass ? 'ĐẠT' : 'KHÔNG ĐẠT')}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {isEditable ? (
+                                      <input
+                                        type="text"
+                                        placeholder="Ghi chú kết quả thực tế..."
+                                        value={resVal.notes}
+                                        onChange={(e) =>
+                                          setItemResults(prev => ({
+                                            ...prev,
+                                            [resKey]: { ...prev[resKey], notes: e.target.value }
+                                          }))
+                                        }
+                                        className="w-full text-xs px-2.5 py-1 border border-slate-200 rounded bg-slate-50/50"
+                                      />
+                                    ) : resVal.notes ? (
+                                      <p className="text-xs text-slate-500 italic">Ghi chú: {resVal.notes}</p>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : selectedTask.checklist_items && selectedTask.checklist_items.length > 0 && (
                     <div className="space-y-3 pt-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                           <FileCheck2 className="w-4 h-4 text-blue-600" />
                           <span>Phiếu Checklist Kiểm tra ({selectedTask.checklist_title})</span>
                         </h4>
-                        <span className="text-xs text-slate-500 font-medium">
-                          {selectedTask.checklist_items.length} tiêu chuẩn
-                        </span>
+                        <div className="flex items-center space-x-3">
+                          <button
+                            type="button"
+                            onClick={() => setPrintDeviceChecklist(selectedTask)}
+                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold text-xs rounded-lg transition"
+                          >
+                            <Printer className="w-4 h-4" />
+                            <span>In Biên bản</span>
+                          </button>
+                          <span className="text-xs text-slate-500 font-medium">
+                            {selectedTask.checklist_items.length} tiêu chuẩn
+                          </span>
+                        </div>
                       </div>
 
                       <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-200">
-                        {selectedTask.checklist_items.map((item) => {
-                          const resVal = itemResults[item.id] || { result_value: '', is_pass: true, notes: '' };
+                        {selectedTask.checklist_items.map((item: any) => {
+                          const resKeyLegacy = `legacy_${item.id}`;
+                          const resVal = itemResults[`legacy_${item.id}`] || { result_value: '', is_pass: true, notes: '' };
                           const isEditable = checkIsAssignee(selectedTask) && ['IN_PROGRESS', 'ACCEPTED', 'RETURNED'].includes(selectedTask.status);
 
                           return (
@@ -1842,6 +2046,35 @@ export const TasksPage: React.FC = () => {
                                 {/* Inputs for Assigned Employee */}
                                 {isEditable ? (
                                   <div className="flex items-center space-x-2 shrink-0">
+                                    {item.input_type === 'OPTION' && (() => {
+                                      let opts: string[] = [];
+                                      try {
+                                        opts = item.options_json ? JSON.parse(item.options_json) : [];
+                                      } catch(e) {}
+                                      return (
+                                        <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                                          {opts.map((opt: string) => (
+                                            <button
+                                              key={opt}
+                                              type="button"
+                                              onClick={() =>
+                                                setItemResults(prev => ({
+                                                  ...prev,
+                                                  [resKeyLegacy]: { ...prev[resKeyLegacy], is_pass: true, result_value: opt }
+                                                }))
+                                              }
+                                              className={`px-3 py-1 text-xs font-bold rounded-md transition ${
+                                                resVal.result_value === opt
+                                                  ? 'bg-blue-600 text-white shadow-xs'
+                                                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                                              }`}
+                                            >
+                                              {opt}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
                                     {item.input_type === 'PASS_FAIL' && (
                                       <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg">
                                         <button

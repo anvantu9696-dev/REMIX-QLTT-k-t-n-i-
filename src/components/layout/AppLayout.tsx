@@ -52,16 +52,14 @@ interface MenuItem {
   label: string;
   icon: React.ReactNode;
   path: string;
-  perm?: string;
-  rolesAllowed?: string[];
+  rolesAllowed?: ('ADMIN' | 'MANAGER' | 'STAFF' | 'VIEWER')[];
   hideForGuest?: boolean;
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, children }) => {
-  const { user, logout, hasPermission, isGuest, simulatedRole, setSimulatedRole, isRealAdmin } = useAuth();
+  const { user, logout, hasRole, isGuest, isRealAdmin } = useAuth();
   const { theme, resolvedTheme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [testRoleDropdownOpen, setTestRoleDropdownOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchResults, setSearchResults] = useState<Device[]>([]);
@@ -104,33 +102,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
     return () => clearTimeout(timer);
   }, [globalSearch]);
 
-  const roleList = [
-    { code: 'ADMIN' as RoleCode, name: 'Quản trị hệ thống' },
-    { code: 'CAN_BO_PHUONG_THUC' as RoleCode, name: 'Cán bộ phương thức' },
-    { code: 'TRUONG_CA' as RoleCode, name: 'Trưởng ca điều hành' },
-    { code: 'PHO_CA' as RoleCode, name: 'Phó ca điều hành' },
-    { code: 'DOI_TRUONG' as RoleCode, name: 'Đội trưởng QLVH' },
-    { code: 'NHAN_VIEN_VAN_HANH' as RoleCode, name: 'Nhân viên vận hành' },
-    { code: 'FIELD_OPERATOR' as RoleCode, name: 'Nhân viên hiện trường' },
-    { code: 'KHACH' as RoleCode, name: 'Khách - Chỉ xem' }
-  ];
-
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, path: '/' },
     { id: 'gis-map', label: 'Bản đồ thiết bị', icon: <MapPin className="w-4 h-4" />, path: '/gis-map' },
-    { id: 'equipment', label: 'Thiết bị', icon: <Zap className="w-4 h-4" />, path: '/equipment', perm: 'equipment:read' },
+    { id: 'equipment', label: 'Thiết bị', icon: <Zap className="w-4 h-4" />, path: '/equipment', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
     { id: 'stations', label: 'Trạm 110kV', icon: <Building2 className="w-4 h-4" />, path: '/stations' },
     { id: 'feeders', label: 'Phát tuyến', icon: <GitCommitHorizontal className="w-4 h-4" />, path: '/feeders' },
     { id: 'loops', label: 'Khép vòng', icon: <CircleDot className="w-4 h-4" />, path: '/loops' },
     { id: 'approvals', label: 'Phê duyệt', icon: <ShieldAlert className="w-4 h-4" />, path: '/approvals' },
-    { id: 'tasks', label: 'Công việc', icon: <Briefcase className="w-4 h-4" />, path: '/tasks', perm: 'tasks:read' },
-    { id: 'my-proposals', label: 'Đề xuất của tôi', icon: <FileText className="w-4 h-4" />, path: '/my-proposals', perm: 'proposals:read' },
-    { id: 'inspections', label: 'Kiểm tra', icon: <CheckSquare className="w-4 h-4" />, path: '/inspections' },
+    { id: 'tasks', label: 'Công việc & Kiểm tra', icon: <Briefcase className="w-4 h-4" />, path: '/tasks', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'my-proposals', label: 'Đề xuất của tôi', icon: <FileText className="w-4 h-4" />, path: '/my-proposals', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
     { id: 'anomalies', label: 'Bất thường', icon: <AlertTriangle className="w-4 h-4" />, path: '/anomalies' },
-    { id: 'reports', label: 'Báo cáo', icon: <FileBarChart className="w-4 h-4" />, path: '/reports', perm: 'reports:read' },
-    { id: 'import', label: 'Import dữ liệu', icon: <Upload className="w-4 h-4" />, path: '/import', perm: 'GRID_DATA_IMPORT', rolesAllowed: ['ADMIN'] },
-    { id: 'documents', label: 'Tài liệu', icon: <FileText className="w-4 h-4" />, path: '/documents', perm: 'documents:read' },
-    { id: 'users', label: 'Người dùng', icon: <Users className="w-4 h-4" />, path: '/users', perm: 'users:read' },
+    { id: 'reports', label: 'Báo cáo', icon: <FileBarChart className="w-4 h-4" />, path: '/reports', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'import', label: 'Import dữ liệu', icon: <Upload className="w-4 h-4" />, path: '/import', rolesAllowed: ['ADMIN'] },
+    { id: 'documents', label: 'Tài liệu', icon: <FileText className="w-4 h-4" />, path: '/documents', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'users', label: 'Người dùng', icon: <Users className="w-4 h-4" />, path: '/users', rolesAllowed: ['ADMIN'] },
     { id: 'guides', label: 'Hướng dẫn', icon: <BookOpen className="w-4 h-4" />, path: '/guides' },
     { id: 'settings', label: 'Cài đặt', icon: <Settings className="w-4 h-4" />, path: '/settings' }
   ];
@@ -142,7 +128,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
       const hasAllowedRole = user.roles?.some(r => item.rolesAllowed!.includes(r));
       if (!hasAllowedRole) return false;
     }
-    if (item.perm) return hasPermission(item.perm);
+    if (item.rolesAllowed) return item.rolesAllowed.some(r => hasRole(r as any));
     return true;
   });
 
@@ -263,8 +249,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
               Vận hành
             </div>
             {[
-              { id: 'tasks', label: 'Công việc' },
-              { id: 'inspections', label: 'Kiểm tra' },
+              { id: 'tasks', label: 'Công việc & Kiểm tra' },
               { id: 'anomalies', label: 'Bất thường' },
               { id: 'approvals', label: 'Phê duyệt' },
               { id: 'my-proposals', label: 'Đề xuất của tôi' }
@@ -480,60 +465,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
               </div>
             </div>
 
-            {/* Test Role Button for Admins */}
-            {isRealAdmin && (
-              <div className="relative hidden md:block">
-                <button
-                  onClick={() => setTestRoleDropdownOpen(!testRoleDropdownOpen)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors border ${
-                    simulatedRole
-                      ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 animate-pulse'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
-                  }`}
-                  title="Thử nghiệm phân quyền theo vai trò"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="text-[11px]">{simulatedRole ? `Role: ${simulatedRole}` : 'Test Role'}</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400" />
-                </button>
 
-                {testRoleDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2 z-50">
-                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                      Chọn Role Thử Nghiệm
-                    </div>
-                    {roleList.map(r => (
-                      <button
-                        key={r.code}
-                        onClick={() => {
-                          setSimulatedRole(r.code);
-                          setTestRoleDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
-                          simulatedRole === r.code ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 font-bold' : 'text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        <span>{r.name}</span>
-                        <span className="text-[10px] font-mono text-slate-400">{r.code}</span>
-                      </button>
-                    ))}
-                    {simulatedRole && (
-                      <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
-                        <button
-                          onClick={() => {
-                            setSimulatedRole(null);
-                            setTestRoleDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-3 py-2 text-xs text-red-600 dark:text-red-400 font-bold hover:bg-red-50 dark:hover:bg-red-950/50"
-                        >
-                          Thoát Test Role (Về ADMIN)
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Dark / Light Mode Toggle */}
             <button
@@ -564,20 +496,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
 
         {/* Viewport Content */}
         <div className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto flex flex-col">
-          {simulatedRole && (
-            <div className="mb-4 bg-amber-500 text-slate-900 px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-between shadow shrink-0 border border-amber-600">
-              <div className="flex items-center gap-2.5">
-                <ShieldAlert className="w-5 h-5 text-slate-900" />
-                <span>⚠️ Đang Test Role: <strong>{simulatedRole}</strong> ({roleList.find(r => r.code === simulatedRole)?.name})</span>
-              </div>
-              <button
-                onClick={() => setSimulatedRole(null)}
-                className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
-              >
-                Thoát Test Role
-              </button>
-            </div>
-          )}
           {currentPath !== '/' && <BackButton onBack={() => window.history.back()} />}
           {children}
         </div>

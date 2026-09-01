@@ -1,3 +1,4 @@
+import { PendingGuard } from './components/PendingGuard';
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -17,8 +18,7 @@ import { MapPage } from './pages/MapPage';
 import { LoopsPage } from './pages/LoopsPage';
 import { LoopDetailPage } from './pages/LoopDetailPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
-import { TasksPage } from './pages/TasksPage';
-import { ChecklistsPage } from './pages/ChecklistsPage';
+import { TasksAndInspectionsWrapper } from './pages/TasksAndInspectionsWrapper';
 import { IssuesPage } from './pages/IssuesPage';
 import { ImportPage } from './pages/ImportPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -113,7 +113,7 @@ function AppContent() {
         return <GuidesPage />;
       case '/equipment': {
         const feederIdParam = queryParams.get('feeder');
-        const initialFeederId = feederIdParam ? parseInt(feederIdParam, 10) : undefined;
+        const initialFeederId = feederIdParam || undefined;
         return (
           <DevicesPage
             initialFeederId={initialFeederId}
@@ -129,7 +129,7 @@ function AppContent() {
         );
       case '/feeders': {
         const stationIdParam = queryParams.get('station');
-        const selectedSubstationId = stationIdParam ? parseInt(stationIdParam, 10) : undefined;
+        const selectedSubstationId = stationIdParam || undefined;
         return (
           <FeedersPage
             selectedSubstationId={selectedSubstationId}
@@ -151,11 +151,9 @@ function AppContent() {
       case '/approvals':
         return <ApprovalsPage />;
       case '/tasks':
-        return <TasksPage />;
+        return <TasksAndInspectionsWrapper />;
       case '/my-proposals':
         return <MyProposalsPage />;
-      case '/inspections':
-        return <ChecklistsPage />;
       case '/anomalies':
         return <IssuesPage />;
       case '/reports':
@@ -183,7 +181,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppContent />
+        <PendingGuard><AppContent /></PendingGuard>
       </AuthProvider>
     </ThemeProvider>
   );

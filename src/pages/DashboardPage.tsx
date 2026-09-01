@@ -50,7 +50,7 @@ interface CriticalDeviceItem {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
-  const { user, isGuest, hasPermission } = useAuth();
+  const { user, isGuest, hasRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentAudits, setRecentAudits] = useState<AuditLog[]>([]);
   const [pendingApprovalTasks, setPendingApprovalTasks] = useState<Task[]>([]);
@@ -82,7 +82,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         }
       }
 
-      if (hasPermission('audit:read')) {
+      if (hasRole('ADMIN')) {
         const auditRes = await api.getAuditLogs({ limit: 6 });
         if (auditRes.success) {
           setRecentAudits(auditRes.data);
@@ -659,7 +659,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                   <ArrowRight className="w-3 h-3" />
                 </button>
               ) : (
-                hasPermission('audit:read') && (
+                hasRole('ADMIN') && (
                   <button
                     onClick={() => onNavigate('/audit-logs')}
                     className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 shrink-0 cursor-pointer"

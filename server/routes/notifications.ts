@@ -1,49 +1,53 @@
 import { Router } from 'express';
-import { dbQuery, dbRun } from '../db';
 import { authenticateToken, AuthenticatedRequest } from '../middleware';
-import { CORE_DATA_SOURCE } from '../config';
+import { getTargetFirestore } from '../firebaseAdmin';
 
 const router = Router();
 router.use(authenticateToken);
 
 // GET /api/notifications - List user's notifications with optional filter
-router.get('/', (req: AuthenticatedRequest, res) => {
-  console.log('--- Received GET /api/notifications ---');
-  
-  if (CORE_DATA_SOURCE === 'firestore') {
-    // Implement Firestore logic here
-    // For now, return empty array to stop 500
-    return res.json({
-        success: true,
-        data: [],
-        unread_count: 0
-    });
-  }
-
-  const userId = req.user!.id;
+router.get('/', async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id.toString(); // Ensure string for Firebase
   const { status = 'all', limit = '30' } = req.query;
+  const pageSize = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 30));
 
   try {
-    let query = `SELECT id, user_id, title, message, type, is_read, link, created_at FROM notifications WHERE user_id = ?`;
-    const params: any[] = [userId];
+    const db = getTargetFirestore();
+    let q = db.collection('notifications').where('user_id', '==', userId);
 
     if (status === 'unread') {
-      query += ` AND is_read = 0`;
+      q = q.where('is_read', '==', 0); // or false, handle both if possible, but let's assume 0/1 or boolean
     } else if (status === 'read') {
-      query += ` AND is_read = 1`;
+      q = q.where('is_read', '==', 1);
     }
+    
+    // To order by created_at, we might need a composite index if we filter by is_read, 
+    // For simplicity, let's just query without is_read filter if it causes index issues, 
+    // but typically we can query and filter in memory if the user doesn't have thousands.
+    // Or just rely on Firestore indexes being created.
+    q = q.orderBy('created_at', 'desc').limit(pageSize);
 
-    query += ` ORDER BY created_at DESC LIMIT ?`;
-    const pageSize = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 30));
-    params.push(pageSize);
-
-    console.log('Query:', query, 'Params:', params);
-    const notifications = dbQuery(query, params);
-    console.log('Notifications count:', notifications.length);
+    const snapshot = await q.get();
+    let notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // Unread count
-    const unreadRes = dbQuery(`SELECT COUNT(*) as unread_count FROM notifications WHERE user_id = ? AND is_read = 0`, [userId]);
-    const unreadCount = unreadRes[0] ? (unreadRes[0].unread_count as number) : 0;
+    const unreadQ = db.collection('notifications')
+      .where('user_id', '==', userId)
+      .where('is_read', 'in', [0, false]); // handle both representations
+    const unreadSnap = await unreadQ.count().get();
+    const unreadCount = unreadSnap.data().count;
+
+    // Handle boolean representations
+    notifications = notifications.map((n: any) => ({
+      ...n,
+      is_read: n.is_read === true || n.is_read === 1 ? 1 : 0
+    }));
+
+    if (status === 'unread') {
+      notifications = notifications.filter((n: any) => n.is_read === 0);
+    } else if (status === 'read') {
+      notifications = notifications.filter((n: any) => n.is_read === 1);
+    }
 
     return res.json({
       success: true,
@@ -52,33 +56,134 @@ router.get('/', (req: AuthenticatedRequest, res) => {
     });
   } catch (err: any) {
     console.error('Error fetching notifications:', err);
+    // Fallback if index missing
+    if (err.message.includes('index')) {
+        try {
+            const db = getTargetFirestore();
+            const snapshot = await db.collection('notifications')
+                .where('user_id', '==', userId)
+                .get();
+            let all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Unread count
+            const unreadCount = all.filter((n:any) => n.is_read === 0 || n.is_read === false).length;
+            
+            // Format and sort in memory
+            all = all.map((n: any) => ({
+              ...n,
+              is_read: n.is_read === true || n.is_read === 1 ? 1 : 0,
+              created_at: n.created_at || ''
+            }));
+            all.sort((a, b) => (b as any).created_at.localeCompare((a as any).created_at));
+            
+            if (status === 'unread') all = all.filter((n:any) => n.is_read === 0);
+            if (status === 'read') all = all.filter((n:any) => n.is_read === 1);
+            
+            return res.json({
+              success: true,
+              data: all.slice(0, pageSize),
+              unread_count: unreadCount
+            });
+        } catch (e: any) {
+             return res.status(500).json({ success: false, message: e.message });
+        }
+    }
     return res.status(500).json({ success: false, message: err.message || 'Lỗi hệ thống' });
   }
 });
 
 // PATCH /api/notifications/:id/read - Mark single as read
-router.patch('/:id/read', (req: AuthenticatedRequest, res) => {
-  if (CORE_DATA_SOURCE === 'firestore') return res.json({ success: true, message: 'Đã đánh dấu đã đọc' });
-  
-  const notificationId = parseInt(req.params.id, 10);
-  dbRun(`UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`, [notificationId, req.user!.id]);
-  return res.json({ success: true, message: 'Đã đánh dấu đã đọc' });
+router.patch('/:id/read', async (req: AuthenticatedRequest, res) => {
+  try {
+    const db = getTargetFirestore();
+    const docRef = db.collection('notifications').doc(req.params.id);
+    const doc = await docRef.get();
+    if (doc.exists && doc.data()?.user_id === req.user!.id.toString()) {
+       await docRef.update({ is_read: 1, isRead: true });
+    }
+    return res.json({ success: true, message: 'Đã đánh dấu đã đọc' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // PATCH /api/notifications/mark-all-read - Mark ALL as read
-router.patch('/mark-all-read', (req: AuthenticatedRequest, res) => {
-  if (CORE_DATA_SOURCE === 'firestore') return res.json({ success: true, message: 'Đã đánh dấu tất cả thông báo là đã đọc' });
-
-  dbRun(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`, [req.user!.id]);
-  return res.json({ success: true, message: 'Đã đánh dấu tất cả thông báo là đã đọc' });
+router.patch('/mark-all-read', async (req: AuthenticatedRequest, res) => {
+  try {
+    const db = getTargetFirestore();
+    const snapshot = await db.collection('notifications')
+      .where('user_id', '==', req.user!.id.toString())
+      .where('is_read', 'in', [0, false])
+      .get();
+    
+    if (!snapshot.empty) {
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        batch.update(doc.ref, { is_read: 1, isRead: true });
+      });
+      await batch.commit();
+    }
+    return res.json({ success: true, message: 'Đã đánh dấu tất cả thông báo là đã đọc' });
+  } catch (err: any) {
+     // If index fails
+     if (err.message.includes('index')) {
+         try {
+            const db = getTargetFirestore();
+            const snapshot = await db.collection('notifications').where('user_id', '==', req.user!.id.toString()).get();
+            const batch = db.batch();
+            let count = 0;
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.is_read === 0 || data.is_read === false) {
+                    batch.update(doc.ref, { is_read: 1, isRead: true });
+                    count++;
+                }
+            });
+            if (count > 0) await batch.commit();
+            return res.json({ success: true, message: 'Đã đánh dấu tất cả thông báo là đã đọc' });
+         } catch(e:any) {}
+     }
+    return res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // DELETE /api/notifications/clear-read - Remove read notifications
-router.delete('/clear-read', (req: AuthenticatedRequest, res) => {
-  if (CORE_DATA_SOURCE === 'firestore') return res.json({ success: true, message: 'Đã xóa các thông báo đã đọc' });
-
-  dbRun(`DELETE FROM notifications WHERE user_id = ? AND is_read = 1`, [req.user!.id]);
-  return res.json({ success: true, message: 'Đã xóa các thông báo đã đọc' });
+router.delete('/clear-read', async (req: AuthenticatedRequest, res) => {
+  try {
+    const db = getTargetFirestore();
+    const snapshot = await db.collection('notifications')
+      .where('user_id', '==', req.user!.id.toString())
+      .where('is_read', 'in', [1, true])
+      .get();
+    
+    if (!snapshot.empty) {
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+    }
+    return res.json({ success: true, message: 'Đã xóa các thông báo đã đọc' });
+  } catch (err: any) {
+    if (err.message.includes('index')) {
+         try {
+            const db = getTargetFirestore();
+            const snapshot = await db.collection('notifications').where('user_id', '==', req.user!.id.toString()).get();
+            const batch = db.batch();
+            let count = 0;
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.is_read === 1 || data.is_read === true) {
+                    batch.delete(doc.ref);
+                    count++;
+                }
+            });
+            if (count > 0) await batch.commit();
+            return res.json({ success: true, message: 'Đã xóa các thông báo đã đọc' });
+         } catch(e:any) {}
+     }
+    return res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 export default router;

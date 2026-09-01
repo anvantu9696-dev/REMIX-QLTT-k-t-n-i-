@@ -1,16 +1,11 @@
 export type RoleCode =
   | 'ADMIN'
-  | 'CAN_BO_PHUONG_THUC'
-  | 'TRUONG_CA'
-  | 'PHO_CA'
-  | 'DOI_TRUONG'
-  | 'NHAN_VIEN_VAN_HANH'
-  | 'FIELD_OPERATOR'
-  | 'KHACH';
+  | 'MANAGER'
+  | 'STAFF'
+  | 'VIEWER';
 
 export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'PENDING' | 'REJECTED';
 
-export type ScopeType = 'SYSTEM' | 'DON_VI' | 'DOI' | 'TRAM' | 'PHAT_TUYEN';
 
 export interface Role {
   id: number;
@@ -29,15 +24,9 @@ export interface Permission {
   action: string;
 }
 
-export interface UserScope {
-  id?: number;
-  user_id?: number;
-  scope_type: ScopeType;
-  scope_value: string; // e.g. 'ALL', 'Công ty Điện lực 1', 'Đội Quản lý 1', 'Trạm 110kV E1.1'
-}
 
 export interface User {
-  id: number;
+  id: number | string;
   employee_code: string;
   full_name: string;
   username: string;
@@ -60,7 +49,7 @@ export interface User {
   roles?: RoleCode[];
   role_names?: string[];
   permissions?: string[];
-  scopes?: UserScope[];
+    lastLoginAt?: string;
 }
 
 export interface AuditLog {
@@ -427,6 +416,7 @@ export interface Task {
   id: number;
   task_code: string;
   title: string;
+  task_devices?: any[];
   device_id?: number | null;
   device_code?: string;
   device_name?: string;

@@ -1,15 +1,13 @@
 import { Router, Response } from 'express';
-import { dbQuery, dbQueryOne, dbRun } from '../db';
 import { broadcastRealtimeEvent } from '../events';
 import {
   authenticateToken,
   denyGuestMutations,
-  requirePermission,
-  requireAnyPermission,
+  requireRole,
+ 
   recordAuditLog,
   AuthenticatedRequest
 } from '../middleware';
-import { CORE_DATA_SOURCE } from '../config';
 import { substationRepo } from '../repositories/firestore/substationRepository';
 import { feederRepo } from '../repositories/firestore/feederRepository';
 import { deviceRepo } from '../repositories/firestore/deviceRepository';
@@ -17,64 +15,34 @@ import { deviceRepo } from '../repositories/firestore/deviceRepository';
 const router = Router();
 
 // 1. Get List of Substations (Trạm 110kV)
-router.get('/', authenticateToken, requireAnyPermission(['equipment:read', 'SUBSTATION_VIEW']), async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', authenticateToken, requireRole(['equipment:read', 'SUBSTATION_VIEW']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { search, status, sortBy, sortOrder } = req.query;
 
-    if (CORE_DATA_SOURCE === 'firestore') {
-        const substations = await substationRepo.list();
-        const feeders = await feederRepo.list();
-        const devices = await deviceRepo.list();
+    
+        let substations = await substationRepo.list({ status: status as string });
         
-        const enrichedSubstations = substations.map(s => {
-            const feederCount = feeders.filter(f => String(f.substation_id) === String(s.id)).length;
-            const deviceCount = devices.filter(d => String(d.substation_id) === String(s.id)).length;
-            return {
-                ...s,
-                feeder_count: feederCount,
-                device_count: deviceCount
-            };
-        });
+        if (search) {
+          const q = search.toString().toLowerCase();
+          substations = substations.filter(s =>
+            (s.substation_code && s.substation_code.toLowerCase().includes(q)) ||
+            (s.name && s.name.toLowerCase().includes(q)) ||
+            (s.address && s.address.toLowerCase().includes(q))
+          );
+        }
+
+        const enrichedSubstations = await Promise.all(substations.map(async s => {
+          const fCount = await feederRepo.count({ substation_id: s.id });
+          const dCount = await deviceRepo.count({ substation_id: s.id });
+          return {
+            ...s,
+            feeder_count: fCount,
+            device_count: dCount
+          };
+        }));
         
         return res.json({ success: true, data: enrichedSubstations });
-    }
-    
-    // Shadow read
-    if (CORE_DATA_SOURCE === 'sqlite-shadow') {
-        substationRepo.list().catch(e => console.error('Shadow read error:', e));
-    }
-    
-    let sql = `
-      SELECT 
-        s.*,
-        (SELECT COUNT(*) FROM feeders f WHERE f.substation_id = s.id AND f.deleted_at IS NULL) as feeder_count,
-        (SELECT COUNT(*) FROM devices d WHERE d.substation_id = s.id AND d.deleted_at IS NULL) as device_count
-      FROM substations s
-      WHERE s.deleted_at IS NULL
-    `;
-    const params: any[] = [];
-
-    if (search) {
-      sql += ` AND (s.substation_code LIKE ? OR s.name LIKE ? OR s.address LIKE ?)`;
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
-
-    if (status) {
-      sql += ` AND s.status = ?`;
-      params.push(status);
-    }
-    
-    // Sorting
-    const validSortColumns = ['name', 'substation_code', 'status', 'feeder_count', 'device_count']; 
-    const sortByCol = validSortColumns.includes(sortBy as string) ? `s.${sortBy}` : 's.id';
-    const sortOrderVal = sortOrder?.toString().toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-    
-    sql += ` ORDER BY ${sortByCol} ${sortOrderVal}`;
-
-    const substations = dbQuery(sql, params);
-    return res.json({ success: true, data: substations });
-  } catch (err: any) {
+    } catch (err: any) {
     console.error('Error fetching substations:', err);
     return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh sách trạm 110kV' });
   }
@@ -85,16 +53,20 @@ router.get('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
   try {
     const { id } = req.params;
     
-    if (CORE_DATA_SOURCE === 'firestore') {
+    
         const substation = await substationRepo.getById(id);
         if (!substation) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin trạm 110kV' });
         }
         
-        const feeders = await feederRepo.list();
-        const devices = await deviceRepo.list();
-        const subFeeders = feeders.filter(f => String(f.substation_id) === String(substation.id)).map(f => {
-            const deviceCount = devices.filter(d => String(d.feeder_id) === String(f.id)).length;
+        // Only load feeders and devices belonging specifically to this substation
+        const [feeders, subDevices] = await Promise.all([
+          feederRepo.listBySubstationId(substation.id),
+          deviceRepo.listBySubstationId(substation.id)
+        ]);
+
+        const subFeeders = feeders.map(f => {
+            const deviceCount = subDevices.filter(d => String(d.feeder_id) === String(f.id)).length;
             return {
                 ...f,
                 device_count: deviceCount
@@ -105,37 +77,12 @@ router.get('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
             success: true,
             data: {
                  ...substation,
+                 feeder_count: subFeeders.length,
+                 device_count: subDevices.length,
                  feeders: subFeeders
             }
         });
-    }
-
-    const substation = dbQueryOne(
-      `SELECT * FROM substations WHERE id = ? AND deleted_at IS NULL`,
-      [id]
-    );
-
-    if (!substation) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin trạm 110kV' });
-    }
-
-    const feeders = dbQuery(
-      `SELECT f.*,
-         (SELECT COUNT(*) FROM devices d WHERE d.feeder_id = f.id AND d.deleted_at IS NULL) as device_count
-       FROM feeders f
-       WHERE f.substation_id = ? AND f.deleted_at IS NULL
-       ORDER BY f.id DESC`,
-      [id]
-    );
-
-    return res.json({
-      success: true,
-      data: {
-        ...substation,
-        feeders
-      }
-    });
-  } catch (err: any) {
+    } catch (err: any) {
     return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy thông tin trạm 110kV' });
   }
 });
@@ -145,7 +92,7 @@ router.post(
   '/',
   authenticateToken,
   denyGuestMutations,
-  requirePermission('equipment:create'),
+  requireRole(['ADMIN', 'MANAGER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const {
@@ -166,7 +113,7 @@ router.post(
         return res.status(400).json({ success: false, message: 'Mã trạm và Tên trạm là bắt buộc' });
       }
 
-      if (CORE_DATA_SOURCE === 'firestore') {
+      
           const existing = await substationRepo.findByCode(substation_code.trim());
           if (existing) {
               return res.status(400).json({
@@ -196,12 +143,7 @@ router.post(
           });
           broadcastRealtimeEvent({ type: 'CREATE', entity: 'substations', id: created.id });
           return res.status(201).json({ success: true, message: 'Thêm mới Trạm 110kV thành công', data: created });
-      }
-
-      // SQLite write guard
-      console.error('SQLITE WRITE ATTEMPTED IN SUBSTATION ROUTE');
-      return res.status(500).json({ success: false, message: 'Ghi SQLite bị chặn' });
-    } catch (err: any) {
+      } catch (err: any) {
       console.error('Error creating substation:', err);
       return res.status(500).json({ success: false, message: 'Lỗi server khi thêm trạm 110kV' });
     }
@@ -213,7 +155,7 @@ router.put(
   '/:id',
   authenticateToken,
   denyGuestMutations,
-  requirePermission('equipment:update'),
+  requireRole(['ADMIN', 'MANAGER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -234,7 +176,7 @@ router.put(
       if (!operationId) return res.status(400).json({ success: false, code: 'OPERATION_ID_REQUIRED' });
       if (expectedVersion === undefined) return res.status(400).json({ success: false, code: 'EXPECTED_VERSION_REQUIRED' });
 
-      if (CORE_DATA_SOURCE === 'firestore') {
+      
           const substation = await substationRepo.getById(id);
           if (!substation) return res.status(404).json({ success: false, message: 'Không tìm thấy trạm' });
 
@@ -265,12 +207,7 @@ router.put(
               if (err.message === 'VERSION_CONFLICT') return res.status(409).json({ success: false, code: 'VERSION_CONFLICT', message: 'Dữ liệu đã được thay đổi trên thiết bị khác. Vui lòng kiểm tra lại.' });
               throw err;
           }
-      }
-
-      // SQLite write guard
-      console.error('SQLITE WRITE ATTEMPTED IN SUBSTATION ROUTE');
-      return res.status(500).json({ success: false, message: 'Ghi SQLite bị chặn' });
-    } catch (err: any) {
+      } catch (err: any) {
       return res.status(500).json({ success: false, message: 'Lỗi server khi cập nhật trạm 110kV' });
     }
   }
@@ -281,7 +218,7 @@ router.delete(
   '/:id',
   authenticateToken,
   denyGuestMutations,
-  requirePermission('equipment:delete'),
+  requireRole(['ADMIN']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -289,7 +226,7 @@ router.delete(
 
       if (!operationId) return res.status(400).json({ success: false, code: 'OPERATION_ID_REQUIRED' });
 
-      if (CORE_DATA_SOURCE === 'firestore') {
+      
           // Verify dependencies
           const activeFeeders = await feederRepo.list();
           const hasFeeders = activeFeeders.some((f: any) => String(f.substation_id) === String(id));
@@ -314,12 +251,7 @@ router.delete(
           } catch (err: any) {
               throw err;
           }
-      }
-
-      // SQLite write guard
-      console.error('SQLITE WRITE ATTEMPTED IN SUBSTATION ROUTE');
-      return res.status(500).json({ success: false, message: 'Ghi SQLite bị chặn' });
-    } catch (err: any) {
+      } catch (err: any) {
       return res.status(500).json({ success: false, message: 'Lỗi server khi xóa trạm 110kV' });
     }
   }

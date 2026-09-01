@@ -38,7 +38,7 @@ interface DeviceDetailPageProps {
 }
 
 export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, onBack }) => {
-  const { isGuest, hasPermission } = useAuth();
+  const { isGuest, hasRole } = useAuth();
   const [device, setDevice] = useState<Device | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -766,6 +766,13 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
                   device.scada_status === 'NO_SIGNAL' ? 'text-amber-600' : 'text-slate-600'
                 }`}>
                   {device.scada_status === 'SIGNAL' ? 'CÓ TÍN HIỆU' : device.scada_status === 'NO_SIGNAL' ? 'KHÔNG CÓ TÍN HIỆU' : 'CHƯA XÁC ĐỊNH'}
+                </span>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Dòng chỉnh định</span>
+                <span className="text-sm font-bold text-slate-900">
+                  {device.current_setting || 'N/A'}
                 </span>
               </div>
 

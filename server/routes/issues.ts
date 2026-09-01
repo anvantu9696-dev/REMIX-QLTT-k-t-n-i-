@@ -1,278 +1,259 @@
 import { Router, Response } from 'express';
-import { dbQuery, dbQueryOne, dbRun } from '../db';
-import { authenticateToken, AuthenticatedRequest } from '../middleware';
-import { broadcastRealtimeEvent } from '../events';
+import { authenticateToken, AuthenticatedRequest, recordAuditLog } from '../middleware';
+import { getTargetFirestore } from '../firebaseAdmin';
 
 const router = Router();
+router.use(authenticateToken);
 
-function generateIssueCode(): string {
-  const countRow = dbQueryOne("SELECT COUNT(*) as count FROM issues");
-  const nextNum = (countRow?.count || 0) + 1;
-  return `ISS-${new Date().getFullYear()}-${String(nextNum).padStart(3, '0')}`;
-}
+const generateIssueCode = () => {
+  return 'IS-' + new Date().getTime().toString().slice(-6) + '-' + Math.floor(Math.random() * 1000);
+};
 
-// 1. GET /api/issues - List issues
-router.get('/', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+// 1. GET /api/issues - List
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+  const { search, status, severity, device_id } = req.query;
   try {
-    const { search, status, severity, device_id } = req.query;
-
-    let sql = `
-      SELECT i.*,
-             d.device_id as device_code, d.name as device_name, d.device_type, d.pole_number,
-             s.name as substation_name, f.name as feeder_name
-      FROM issues i
-      LEFT JOIN devices d ON i.device_id = d.id
-      LEFT JOIN substations s ON d.substation_id = s.id
-      LEFT JOIN feeders f ON d.feeder_id = f.id
-      WHERE 1=1
-    `;
-    const params: any[] = [];
-
-    if (search) {
-      sql += ` AND (i.issue_code LIKE ? OR i.title LIKE ? OR i.content LIKE ? OR d.name LIKE ? OR d.device_id LIKE ?)`;
-      const term = `%${search}%`;
-      params.push(term, term, term, term, term);
-    }
+    const db = getTargetFirestore();
+    let q: any = db.collection('issues');
 
     if (status) {
-      sql += ` AND i.status = ?`;
-      params.push(status);
+      q = q.where('status', '==', status);
     }
-
     if (severity) {
-      sql += ` AND i.severity = ?`;
-      params.push(severity);
+      q = q.where('severity', '==', severity);
     }
-
     if (device_id) {
-      sql += ` AND i.device_id = ?`;
-      params.push(device_id);
+      q = q.where('device_id', '==', String(device_id));
+    }
+    
+    const snapshot = await q.get();
+    let issues = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    if (search) {
+      const term = (search as string).toLowerCase();
+      issues = issues.filter((i: any) => 
+        (i.issue_code && i.issue_code.toLowerCase().includes(term)) ||
+        (i.title && i.title.toLowerCase().includes(term)) ||
+        (i.content && i.content.toLowerCase().includes(term)) ||
+        (i.device_name && i.device_name.toLowerCase().includes(term)) ||
+        (i.device_code && i.device_code.toLowerCase().includes(term))
+      );
     }
 
-    sql += ` ORDER BY 
-      CASE i.severity
-        WHEN 'CRITICAL' THEN 1
-        WHEN 'HIGH' THEN 2
-        WHEN 'MEDIUM' THEN 3
-        WHEN 'LOW' THEN 4
-      END,
-      i.reported_at DESC
-    `;
+    issues.sort((a, b) => {
+      const sevWeight = { 'CRITICAL': 1, 'HIGH': 2, 'MEDIUM': 3, 'LOW': 4 };
+      const wA = sevWeight[a.severity as keyof typeof sevWeight] || 5;
+      const wB = sevWeight[b.severity as keyof typeof sevWeight] || 5;
+      if (wA !== wB) return wA - wB;
+      return (b.reported_at || '').localeCompare(a.reported_at || '');
+    });
 
-    const issues = dbQuery(sql, params);
     res.json({ success: true, data: issues, total: issues.length });
   } catch (error: any) {
-    console.error('Error fetching issues:', error);
+    if (error.message.includes('index')) {
+        try {
+            const db = getTargetFirestore();
+            const snapshot = await db.collection('issues').get();
+            let all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+            if (status) all = all.filter(a => a.status === status);
+            if (severity) all = all.filter(a => a.severity === severity);
+            if (device_id) all = all.filter(a => a.device_id === String(device_id));
+            if (search) {
+              const term = (search as string).toLowerCase();
+              all = all.filter((i: any) => 
+                (i.issue_code && i.issue_code.toLowerCase().includes(term)) ||
+                (i.title && i.title.toLowerCase().includes(term)) ||
+                (i.content && i.content.toLowerCase().includes(term)) ||
+                (i.device_name && i.device_name.toLowerCase().includes(term)) ||
+                (i.device_code && i.device_code.toLowerCase().includes(term))
+              );
+            }
+            all.sort((a, b) => {
+              const sevWeight = { 'CRITICAL': 1, 'HIGH': 2, 'MEDIUM': 3, 'LOW': 4 };
+              const wA = sevWeight[a.severity as keyof typeof sevWeight] || 5;
+              const wB = sevWeight[b.severity as keyof typeof sevWeight] || 5;
+              if (wA !== wB) return wA - wB;
+              return (b.reported_at || '').localeCompare(a.reported_at || '');
+            });
+            return res.json({ success: true, data: all, total: all.length });
+        } catch(e:any) {
+            return res.status(500).json({ success: false, message: e.message });
+        }
+    }
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách bất thường' });
   }
 });
 
 // 2. GET /api/issues/:id - Detail
-router.get('/:id', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    const issue = dbQueryOne(
-      `SELECT i.*,
-              d.device_id as device_code, d.name as device_name, d.device_type, d.pole_number, d.unit as device_unit, d.team as device_team, d.latitude, d.longitude,
-              s.name as substation_name, f.name as feeder_name
-       FROM issues i
-       LEFT JOIN devices d ON i.device_id = d.id
-       LEFT JOIN substations s ON d.substation_id = s.id
-       LEFT JOIN feeders f ON d.feeder_id = f.id
-       WHERE i.id = ?`,
-      [id]
-    );
-
-    if (!issue) {
+    const db = getTargetFirestore();
+    const doc = await db.collection('issues').doc(req.params.id).get();
+    if (!doc.exists) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin bất thường' });
     }
-
-    res.json({ success: true, data: issue });
+    res.json({ success: true, data: { id: doc.id, ...doc.data() } });
   } catch (error: any) {
-    console.error('Error fetching issue detail:', error);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi lấy chi tiết bất thường' });
   }
 });
 
 // 3. POST /api/issues - Report new issue (BÁO BẤT THƯỜNG)
-router.post('/', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+router.post('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const {
-      device_id,
-      title,
-      content,
-      severity,
-      image_url,
-      notes
-    } = req.body;
-
+    const { device_id, title, content, severity, image_url, notes } = req.body;
     if (!device_id || !title || !content || !severity) {
       return res.status(400).json({ success: false, message: 'Vui lòng chọn Thiết bị, Tên bất thường, Nội dung và Mức độ nghiêm trọng' });
     }
+    
+    const db = getTargetFirestore();
+    let dData = {} as any;
+    try {
+       const dDoc = await db.collection('devices').doc(String(device_id)).get();
+       if (dDoc.exists) {
+           const dat = dDoc.data()!;
+           dData = {
+               device_code: dat.name || '',
+               device_name: dat.name || '',
+               device_type: dat.device_type || '',
+               pole_number: dat.pole_number || '',
+               device_unit: dat.unit || '',
+               device_team: dat.team || '',
+               latitude: dat.latitude || null,
+               longitude: dat.longitude || null
+           };
+       }
+    } catch(e){}
 
     const code = generateIssueCode();
+    const newIssueRef = db.collection('issues').doc();
+    const issueData = {
+      issue_code: code,
+      device_id: String(device_id),
+      ...dData,
+      title,
+      content,
+      severity,
+      status: 'NEW',
+      image_url: image_url || '',
+      reported_by_username: req.user?.username || 'SYSTEM',
+      reported_by_fullname: req.user?.full_name || 'Hệ thống',
+      notes: notes || '',
+      reported_at: new Date().toISOString(),
+      created_at: new Date().toISOString()
+    };
+    
+    await newIssueRef.set(issueData);
 
-    dbRun(
-      `INSERT INTO issues (
-        issue_code, device_id, title, content, severity, status, image_url,
-        reported_by_username, reported_by_fullname, notes
-      ) VALUES (?, ?, ?, ?, ?, 'NEW', ?, ?, ?, ?)`,
-      [
-        code,
-        device_id,
-        title,
-        content,
-        severity,
-        image_url || '',
-        req.user?.username || 'SYSTEM',
-        req.user?.full_name || 'Hệ thống',
-        notes || ''
-      ]
-    );
-
-    const newIssue = dbQueryOne("SELECT * FROM issues WHERE issue_code = ?", [code]);
-
-    // Audit Log
-    dbRun(
-      `INSERT INTO audit_logs (user_id, username, user_fullname, action, module, target_id, details, result)
-       VALUES (?, ?, ?, 'BAO_BAT_THUONG', 'BAT_THUONG', ?, ?, 'SUCCESS')`,
-      [
-        req.user?.id || 1,
-        req.user?.username || 'SYSTEM',
-        req.user?.full_name || 'Hệ thống',
-        code,
-        `Báo bất thường "${title}" mức độ ${severity} trên thiết bị ID #${device_id}`
-      ]
+    await recordAuditLog(
+      req.user?.id || 1,
+      req.user?.username || 'SYSTEM',
+      req.user?.full_name || 'Hệ thống',
+      'BAO_BAT_THUONG',
+      'BAT_THUONG',
+      code,
+      `Báo bất thường "${title}" mức độ ${severity} trên thiết bị ID #${device_id}`,
+      'SUCCESS',
+      req.ip || ''
     );
 
     // If HIGH or CRITICAL, send alert notifications to managers/leads
     if (['HIGH', 'CRITICAL'].includes(severity)) {
-      const managers = dbQuery(
-        `SELECT DISTINCT u.id FROM users u
-         JOIN user_roles ur ON u.id = ur.user_id
-         JOIN roles r ON ur.role_id = r.id
-         WHERE r.code IN ('ADMIN', 'DOI_TRUONG', 'TRUONG_CA')`
-      );
-
-      for (const m of managers) {
-        dbRun(
-          `INSERT INTO notifications (user_id, title, message, type, link)
-           VALUES (?, ?, ?, 'ALERT', ?)`,
-          [
-            m.id,
-            `CẢNH BÁO BẤT THƯỜNG [${severity}]: ${code}`,
-            `Phát hiện bất thường nghiêm trọng "${title}" tại thiết bị. Vui lòng phân công xử lý khẩn cấp.`,
-            `/issues?id=${newIssue.id}`
-          ]
-        );
-      }
+       try {
+           const batch = db.batch();
+           const managers = await db.collection('users')
+                .where('roles', 'array-contains-any', ['ADMIN', 'DOI_TRUONG', 'TRUONG_CA'])
+                .get();
+           managers.docs.forEach(m => {
+               const nRef = db.collection('notifications').doc();
+               batch.set(nRef, {
+                   user_id: m.id,
+                   title: `CẢNH BÁO BẤT THƯỜNG [${severity}]: ${code}`,
+                   message: `Phát hiện bất thường nghiêm trọng "${title}" tại thiết bị. Vui lòng phân công xử lý khẩn cấp.`,
+                   type: 'ALERT',
+                   link: `/issues?id=${newIssueRef.id}`,
+                   is_read: 0,
+                   isRead: false,
+                   created_at: new Date().toISOString()
+               });
+           });
+           await batch.commit();
+       } catch (e) {
+           // Ignore if index missing for array-contains-any, or just ignore failures in notification sending for now
+       }
     }
 
-    broadcastRealtimeEvent({
-      type: 'CREATE',
-      entity: 'ISSUE',
-      action: 'CREATE',
-      id: newIssue.id,
-      data: { title: newIssue.title, severity: newIssue.severity }
-    });
-
-    res.json({ success: true, message: 'Ghi nhận báo bất thường thành công', data: newIssue });
+    res.json({ success: true, message: 'Ghi nhận báo bất thường thành công', data: { id: newIssueRef.id, ...issueData } });
   } catch (error: any) {
-    console.error('Error reporting issue:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi báo bất thường' });
   }
 });
 
-// 4. PUT /api/issues/:id/status - Update issue status (NEW -> ASSIGNED -> IN_PROGRESS -> RESOLVED -> CLOSED)
-router.put('/:id/status', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+// 4. PUT /api/issues/:id/status
+router.put('/:id/status', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
     const { status, assigned_to_username, resolution_notes } = req.body;
-
-    const issue = dbQueryOne("SELECT * FROM issues WHERE id = ?", [id]);
-    if (!issue) {
+    const db = getTargetFirestore();
+    const docRef = db.collection('issues').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin bất thường' });
     }
-
-    let assignedFullname = issue.assigned_to_fullname;
+    
+    let assignedFullname = doc.data()?.assigned_to_fullname;
     if (assigned_to_username) {
-      const u = dbQueryOne("SELECT full_name FROM users WHERE username = ?", [assigned_to_username]);
-      if (u) assignedFullname = u.full_name;
+        try {
+            const uSnap = await db.collection('users').where('username', '==', assigned_to_username).limit(1).get();
+            if (!uSnap.empty) assignedFullname = uSnap.docs[0].data().full_name;
+        } catch(e){}
     }
 
     const isResolved = status === 'RESOLVED';
     const isClosed = status === 'CLOSED';
+    
+    const updateData: any = {
+      status,
+      assigned_to_username: assigned_to_username || doc.data()?.assigned_to_username || null,
+      assigned_to_fullname: assignedFullname || null,
+      updated_at: new Date().toISOString()
+    };
+    
+    if (resolution_notes) updateData.resolution_notes = resolution_notes;
+    if (isResolved) updateData.resolved_at = new Date().toISOString();
+    if (isClosed) {
+        updateData.closed_at = new Date().toISOString();
+        updateData.closed_by = req.user?.username || 'SYSTEM';
+    }
 
-    dbRun(
-      `UPDATE issues SET
-        status = ?,
-        assigned_to_username = COALESCE(?, assigned_to_username),
-        assigned_to_fullname = COALESCE(?, assigned_to_fullname),
-        resolution_notes = CASE WHEN ? != '' THEN ? ELSE resolution_notes END,
-        resolved_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE resolved_at END,
-        closed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE closed_at END,
-        closed_by = CASE WHEN ? THEN ? ELSE closed_by END
-       WHERE id = ?`,
-      [
-        status,
-        assigned_to_username || null,
-        assignedFullname || null,
-        resolution_notes || '',
-        resolution_notes || '',
-        isResolved ? 1 : 0,
-        isClosed ? 1 : 0,
-        isClosed ? 1 : 0,
-        req.user?.username || 'SYSTEM',
-        id
-      ]
-    );
+    await docRef.update(updateData);
 
-    // Audit log
     const auditAction = isClosed ? 'DONG_BAT_THUONG' : 'CAP_NHAT_BAT_THUONG';
-    dbRun(
-      `INSERT INTO audit_logs (user_id, username, user_fullname, action, module, target_id, details, result)
-       VALUES (?, ?, ?, ?, 'BAT_THUONG', ?, ?, 'SUCCESS')`,
-      [
-        req.user?.id || 1,
-        req.user?.username || 'SYSTEM',
-        req.user?.full_name || 'Hệ thống',
-        auditAction,
-        issue.issue_code,
-        `Chuyển trạng thái xử lý bất thường "${issue.title}" sang ${status}`
-      ]
+    await recordAuditLog(
+      req.user?.id || 1,
+      req.user?.username || 'SYSTEM',
+      req.user?.full_name || 'Hệ thống',
+      auditAction,
+      'BAT_THUONG',
+      doc.data()?.issue_code || doc.id,
+      `Chuyển trạng thái xử lý bất thường "${doc.data()?.title}" sang ${status}`,
+      'SUCCESS',
+      req.ip || ''
     );
-
-    broadcastRealtimeEvent({
-      type: 'UPDATE',
-      entity: 'ISSUE',
-      action: 'STATUS',
-      id: id,
-      data: { title: issue.title, status }
-    });
 
     res.json({ success: true, message: 'Cập nhật trạng thái xử lý bất thường thành công' });
   } catch (error: any) {
-    console.error('Error updating issue status:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi cập nhật trạng thái bất thường' });
   }
 });
 
 // 5. DELETE /api/issues/:id
-router.delete('/:id', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    dbRun("DELETE FROM issues WHERE id = ?", [id]);
-
-    broadcastRealtimeEvent({
-      type: 'DELETE',
-      entity: 'ISSUE',
-      action: 'DELETE',
-      id: id
-    });
-
+    const db = getTargetFirestore();
+    await db.collection('issues').doc(req.params.id).delete();
     res.json({ success: true, message: 'Xóa bất thường thành công' });
   } catch (error: any) {
-    console.error('Error deleting issue:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi xóa thông tin bất thường' });
   }
 });

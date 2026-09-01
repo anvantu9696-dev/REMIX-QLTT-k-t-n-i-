@@ -1,0 +1,245 @@
+[
+  {
+    "id": "2",
+    "data": {
+      "id": 2,
+      "employee_code": "NV-00002",
+      "full_name": "Trần Thị Phương Thức",
+      "username": "cb_phuongthuc",
+      "email": "phuongthuc@luoidien.evn.vn",
+      "phone": "0902345678",
+      "unit": "Điện lực Bình Dương",
+      "team": "Phòng Phương thức Vận hành",
+      "title": "Chuyên viên Phương thức",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.014Z"
+    }
+  },
+  {
+    "id": "6",
+    "data": {
+      "id": 6,
+      "employee_code": "NV-00006",
+      "full_name": "Đỗ Văn Vận Hành",
+      "username": "nv_vanhanh",
+      "email": "vanhanh@luoidien.evn.vn",
+      "phone": "0906789012",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "title": "Kỹ thuật viên Vận hành",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.016Z"
+    }
+  },
+  {
+    "id": "7",
+    "data": {
+      "id": 7,
+      "employee_code": "NV-00007",
+      "full_name": "Nguyễn Văn Khách",
+      "username": "khach_guest",
+      "email": "khach@luoidien.evn.vn",
+      "phone": "0907890123",
+      "unit": "Sở Công Thương",
+      "team": "Đoàn Giám sát",
+      "title": "Cán bộ Giám sát",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.016Z"
+    }
+  },
+  {
+    "id": "3",
+    "data": {
+      "id": 3,
+      "employee_code": "NV-00003",
+      "full_name": "Lê Văn Trưởng Ca",
+      "username": "truongca_a",
+      "email": "truongca@luoidien.evn.vn",
+      "phone": "0903456789",
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Vận hành Lưới điện",
+      "title": "Trưởng ca Điều hành",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.017Z"
+    }
+  },
+  {
+    "id": "1",
+    "data": {
+      "id": 1,
+      "employee_code": "NV-00001",
+      "full_name": "Nguyễn Văn Admin",
+      "username": "admin",
+      "email": "admin@luoidien.evn.vn",
+      "phone": "0901234567",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI QLVH",
+      "title": "Quản trị viên Hệ thống",
+      "password_hash": "$2b$10$Xb2WORYqfK0rbMQS1jmuBOIwJMQu2isp1M7P2iR76VLbsDyC2Af86",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.017Z"
+    }
+  },
+  {
+    "id": "5",
+    "data": {
+      "id": 5,
+      "employee_code": "NV-00005",
+      "full_name": "Hoàng Văn Đội Trưởng",
+      "username": "doitruong_1",
+      "email": "doitruong@luoidien.evn.vn",
+      "phone": "0905678901",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "title": "Đội trưởng QLVH",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.017Z"
+    }
+  },
+  {
+    "id": "9",
+    "data": {
+      "id": 9,
+      "employee_code": "NV-00009",
+      "full_name": "Nhân viên hiện trường Test",
+      "username": "field.test",
+      "email": "field.test@example.local",
+      "phone": "0909999888",
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Quản lý Vận hành Test",
+      "title": "Nhân viên Hiện trường Test",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.017Z"
+    }
+  },
+  {
+    "id": "4",
+    "data": {
+      "id": 4,
+      "employee_code": "NV-00004",
+      "full_name": "Phạm Văn Phó Ca",
+      "username": "phoca_a",
+      "email": "phoca@luoidien.evn.vn",
+      "phone": "0904567890",
+      "unit": "Điện lực Bình Dương",
+      "team": "Đội Vận hành Lưới điện",
+      "title": "Phó ca Điều hành",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.017Z"
+    }
+  },
+  {
+    "id": "8",
+    "data": {
+      "id": 8,
+      "employee_code": "NV-00008",
+      "full_name": "Bùi Văn Hiện Trường",
+      "username": "nhanvien_hientruong",
+      "email": "hientruong@luoidien.evn.vn",
+      "phone": "0908901234",
+      "unit": "Điện lực Bình Dương",
+      "team": "ĐỘI VẬN HÀNH LƯỚI ĐIỆN",
+      "title": "Nhân viên Hiện trường",
+      "password_hash": "$2b$10$UfVOMrWoCsCNPGm14FZ.buyTLaVR.WUWskEFUeLq5tPI.I3M6V7tm",
+      "created_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "updated_at": {
+        "_seconds": 1787756753,
+        "_nanoseconds": 0
+      },
+      "created_by": "SYSTEM",
+      "isActive": false,
+      "status": "TEST_DISABLED",
+      "updatedAt": "2026-08-27T16:42:32.018Z"
+    }
+  }
+]

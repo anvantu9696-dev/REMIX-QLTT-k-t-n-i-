@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getApp, getApps } from 'firebase-admin/app';
-import './db';
+
 
 export async function pushRealtimeEvent(event: { type: string; entity: string; action?: string; id?: number | string; data?: any }) {
   try {

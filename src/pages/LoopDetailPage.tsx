@@ -38,7 +38,7 @@ export const LoopDetailPage: React.FC = () => {
     window.history.pushState({}, '', path);
     window.dispatchEvent(new Event('popstate'));
   };
-  const { user, hasPermission } = useAuth();
+  const { user, hasRole } = useAuth();
 
   const [loop, setLoop] = useState<Loop | null>(null);
   const [activeVersion, setActiveVersion] = useState<TopologyVersion | null>(null);
@@ -259,7 +259,7 @@ export const LoopDetailPage: React.FC = () => {
           </button>
 
           {/* Save & Submit Actions */}
-          {hasPermission('EDIT_TOPOLOGY') && (
+          {(hasRole('ADMIN') || hasRole('MANAGER')) && (
             <>
               <button
                 onClick={() => handleSaveTopology(false)}
@@ -321,7 +321,7 @@ export const LoopDetailPage: React.FC = () => {
             nodes={nodes}
             edges={edges}
             onChange={handleTopologyChange}
-            readOnly={!hasPermission('EDIT_TOPOLOGY')}
+            readOnly={!(hasRole('ADMIN') || hasRole('MANAGER'))}
             loop={loop}
             onEditLoop={() => navigate('/loops')}
           />
@@ -428,14 +428,14 @@ export const LoopDetailPage: React.FC = () => {
               <div className="text-[10px] uppercase font-bold text-blue-400">Đầu A (Nguồn A)</div>
               <div className="text-slate-200 font-bold">{loop.substation_name_a || 'Trạm A'}</div>
               <div className="text-slate-400 text-[11px]">{loop.feeder_code_a || 'Phát tuyến A'}</div>
-              <div className="text-[10px] font-mono text-slate-500">TB A: {loop.device_id_a}</div>
+              <div className="text-[11px] font-semibold text-slate-200">TB A: {loop.device_name_a || loop.device_code_a || loop.device_id_a}</div>
             </div>
 
             <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
               <div className="text-[10px] uppercase font-bold text-purple-400">Đầu B (Nguồn B)</div>
               <div className="text-slate-200 font-bold">{loop.substation_name_b || 'Trạm B'}</div>
               <div className="text-slate-400 text-[11px]">{loop.feeder_code_b || 'Phát tuyến B'}</div>
-              <div className="text-[10px] font-mono text-slate-500">TB B: {loop.device_id_b}</div>
+              <div className="text-[11px] font-semibold text-slate-200">TB B: {loop.device_name_b || loop.device_code_b || loop.device_id_b}</div>
             </div>
 
             <div className="flex justify-between py-1.5 border-b border-slate-800">
@@ -581,7 +581,7 @@ export const LoopDetailPage: React.FC = () => {
                     >
                       Xem
                     </button>
-                    {hasPermission('EDIT_TOPOLOGY') && (
+                    {(hasRole('ADMIN') || hasRole('MANAGER')) && (
                       <button
                         onClick={() => handleRestoreVersion(v)}
                         className="px-2.5 py-1 bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 font-bold rounded text-[11px]"

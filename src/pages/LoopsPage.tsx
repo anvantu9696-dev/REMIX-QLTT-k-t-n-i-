@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Loop, Substation, Feeder, Device } from '../types';
+import { SearchableSelect } from '../components/SearchableSelect';
 import { api } from '../lib/api';
 import { normalizeLoop } from '../lib/loopUtils';
 import { useAuth } from '../context/AuthContext';
@@ -46,8 +47,8 @@ export const LoopsPage: React.FC = () => {
     window.history.pushState({}, '', path);
     window.dispatchEvent(new Event('popstate'));
   };
-  const { hasPermission, isGuest, user } = useAuth();
-  const isAdmin = user?.roles?.includes('ADMIN') || hasPermission('equipment:delete');
+  const { hasRole, isGuest, user } = useAuth();
+  const isAdmin = user?.roles?.includes('ADMIN') || hasRole('ADMIN');
 
   const [loops, setLoops] = useState<Loop[]>([]);
   const [substations, setSubstations] = useState<Substation[]>([]);
@@ -630,7 +631,7 @@ export const LoopsPage: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Reset All Loops Button for Admin */}
-          {!isGuest() && (hasPermission('equipment:delete') || user?.roles?.includes('ADMIN')) && (
+          {!isGuest() && (hasRole('ADMIN') || user?.roles?.includes('ADMIN')) && (
             <button
               onClick={handleOpenResetAllModal}
               className="flex items-center space-x-1.5 px-3 py-2 bg-red-950/80 hover:bg-red-900 text-red-300 hover:text-white border border-red-800/80 font-bold rounded-xl text-xs transition-colors shadow-sm"
@@ -667,7 +668,7 @@ export const LoopsPage: React.FC = () => {
             </label>
           )}
 
-          {!isGuest() && (hasPermission('equipment:create') || hasPermission('MANAGE_LOOPS')) && (
+          {!isGuest() && ((hasRole('ADMIN') || hasRole('MANAGER')) || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
             <button
               onClick={handleOpenCreateModal}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all text-xs"
@@ -758,31 +759,12 @@ export const LoopsPage: React.FC = () => {
         </div>
 
         <div>
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-          >
-            <option value="">Tất cả trạng thái</option>
-            <option value="ACTIVE">Hoạt động (ACTIVE)</option>
-            <option value="CLOSED">Đang khép vòng (CLOSED)</option>
-            <option value="INACTIVE">Ngừng vận hành (INACTIVE)</option>
-          </select>
-        </div>
-
-        <div>
-          <select
+          <SearchableSelect
             value={substationFilter}
-            onChange={e => setSubstationFilter(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-          >
-            <option value="">Tất cả Trạm 110kV</option>
-            {substations.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.substation_code})
-              </option>
-            ))}
-          </select>
+            onChange={val => setSubstationFilter(val)}
+            options={[{value: "", label: "Tất cả Trạm 110kV"}, ...substations.map(s => ({ value: String(s.id), label: `${s.name} (${s.substation_code})` }))]}
+            placeholder="Tất cả Trạm 110kV"
+          />
         </div>
 
         <button
@@ -805,13 +787,12 @@ export const LoopsPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {loops.map(loop => {
+          {loops.map((loop, _i) => {
             const opStatus = loop.operation_status || loop.operating_status || (loop.status === 'CLOSED' ? 'CLOSED' : 'OPEN');
             const cfgStatus = loop.configuration_status || loop.config_status || (loop.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE');
-
             return (
               <div
-                key={loop.id}
+                key={`${loop.id}-${_i}`}
                 className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 shadow-xl transition-all flex flex-col justify-between space-y-4 group"
               >
                 <div>
@@ -1004,7 +985,7 @@ export const LoopsPage: React.FC = () => {
                       <div className="text-[10px] uppercase font-bold text-slate-500">ĐẦU A (Nguồn A)</div>
                       <div className="font-bold text-slate-200 truncate">{loop.substation_name_a || 'Trạm A'}</div>
                       <div className="text-[11px] text-blue-400">{loop.feeder_code_a || 'Phát tuyến A'}</div>
-                      <div className="text-[10px] font-mono text-slate-400">TB A: {loop.device_id_a}</div>
+                      <div className="text-[10px] font-semibold text-slate-300">TB A: {loop.device_name_a || loop.device_code_a || loop.device_id_a}</div>
                     </div>
 
                     {/* Point B */}
@@ -1012,7 +993,7 @@ export const LoopsPage: React.FC = () => {
                       <div className="text-[10px] uppercase font-bold text-slate-500">ĐẦU B (Nguồn B)</div>
                       <div className="font-bold text-slate-200 truncate">{loop.substation_name_b || 'Trạm B'}</div>
                       <div className="text-[11px] text-purple-400">{loop.feeder_code_b || 'Phát tuyến B'}</div>
-                      <div className="text-[10px] font-mono text-slate-400">TB B: {loop.device_id_b}</div>
+                      <div className="text-[10px] font-semibold text-slate-300">TB B: {loop.device_name_b || loop.device_code_b || loop.device_id_b}</div>
                     </div>
                   </div>
 
@@ -1077,7 +1058,7 @@ export const LoopsPage: React.FC = () => {
                       </button>
                     )}
 
-                    {!isGuest() && (hasPermission('equipment:delete') || hasPermission('MANAGE_LOOPS')) && (
+                    {!isGuest() && (hasRole('ADMIN') || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
                       <button
                         onClick={() => handleOpenDeleteModal(loop)}
                         className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
@@ -1153,18 +1134,12 @@ export const LoopsPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block font-medium text-slate-400 mb-1">Chọn Điểm Dừng Pháp Lý</label>
-                  <select
+                  <SearchableSelect
                     value={formData.loop_device_id}
-                    onChange={e => handleLoopDeviceChange(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                  >
-                    <option value="">-- Chọn Điểm dừng pháp lý (LBS, Recloser, DS...) --</option>
-                    {devices.map(d => (
-                      <option key={d.id} value={d.device_id}>
-                        {d.device_id} - {d.name} ({d.device_type}) {d.feeder_name ? `[${d.feeder_name}]` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={val => handleLoopDeviceChange(val)}
+                    options={[{value: "", label: "-- Chọn Điểm dừng pháp lý --"}, ...devices.map(d => ({ value: d.device_id, label: `${d.device_id} - ${d.name} (${d.device_type}) ${d.feeder_name ? '[' + d.feeder_name + ']' : ''}` }))]}
+                    placeholder="-- Chọn Điểm dừng pháp lý --"
+                  />
                 </div>
               </div>
 
@@ -1174,53 +1149,37 @@ export const LoopsPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block font-medium text-slate-400 mb-1">Trạm 110kV A *</label>
-                    <select
+                    <SearchableSelect
                       required
                       value={formData.substation_id_a}
-                      onChange={e => handleSubstationAChange(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    >
-                      <option value="">-- Chọn Trạm A --</option>
-                      {substations.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => handleSubstationAChange(val)}
+                      options={substations.map(s => ({ value: String(s.id), label: s.name }))}
+                      placeholder="-- Chọn Trạm A --"
+                    />
                   </div>
 
                   <div>
                     <label className="block font-medium text-slate-400 mb-1">Phát tuyến A *</label>
-                    <select
+                    <SearchableSelect
                       required
                       value={formData.feeder_id_a}
-                      onChange={e => handleFeederAChange(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    >
-                      <option value="">-- Chọn Phát tuyến A --</option>
-                      {feederListA.map(f => (
-                        <option key={f.id} value={f.id}>
-                          {f.feeder_code} - {f.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => handleFeederAChange(val)}
+                      options={feederListA.map(f => ({ value: String(f.id), label: `${f.feeder_code} - ${f.name}` }))}
+                      placeholder="-- Chọn Phát tuyến A --"
+                      disabled={!formData.substation_id_a}
+                    />
                   </div>
 
                   <div>
                     <label className="block font-medium text-slate-400 mb-1">Thiết bị đầu A *</label>
-                    <select
+                    <SearchableSelect
                       required
                       value={formData.device_id_a}
-                      onChange={e => setFormData({ ...formData, device_id_a: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    >
-                      <option value="">-- Chọn Thiết bị --</option>
-                      {deviceListA.map(d => (
-                        <option key={d.id} value={d.device_id}>
-                          {d.device_id} - {d.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => setFormData({ ...formData, device_id_a: val })}
+                      options={deviceListA.map(d => ({ value: String(d.device_id), label: `${d.device_id} - ${d.name}` }))}
+                      placeholder="-- Chọn Thiết bị --"
+                      disabled={!formData.feeder_id_a}
+                    />
                   </div>
                 </div>
               </div>
@@ -1231,53 +1190,37 @@ export const LoopsPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block font-medium text-slate-400 mb-1">Trạm 110kV B *</label>
-                    <select
+                    <SearchableSelect
                       required
                       value={formData.substation_id_b}
-                      onChange={e => handleSubstationBChange(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    >
-                      <option value="">-- Chọn Trạm B --</option>
-                      {substations.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => handleSubstationBChange(val)}
+                      options={substations.map(s => ({ value: String(s.id), label: s.name }))}
+                      placeholder="-- Chọn Trạm B --"
+                    />
                   </div>
 
                   <div>
                     <label className="block font-medium text-slate-400 mb-1">Phát tuyến B *</label>
-                    <select
+                    <SearchableSelect
                       required
                       value={formData.feeder_id_b}
-                      onChange={e => handleFeederBChange(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    >
-                      <option value="">-- Chọn Phát tuyến B --</option>
-                      {feederListB.map(f => (
-                        <option key={f.id} value={f.id}>
-                          {f.feeder_code} - {f.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => handleFeederBChange(val)}
+                      options={feederListB.map(f => ({ value: String(f.id), label: `${f.feeder_code} - ${f.name}` }))}
+                      placeholder="-- Chọn Phát tuyến B --"
+                      disabled={!formData.substation_id_b}
+                    />
                   </div>
 
                   <div>
                     <label className="block font-medium text-slate-400 mb-1">Thiết bị đầu B *</label>
-                    <select
+                    <SearchableSelect
                       required
                       value={formData.device_id_b}
-                      onChange={e => setFormData({ ...formData, device_id_b: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    >
-                      <option value="">-- Chọn Thiết bị --</option>
-                      {deviceListB.map(d => (
-                        <option key={d.id} value={d.device_id}>
-                          {d.device_id} - {d.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => setFormData({ ...formData, device_id_b: val })}
+                      options={deviceListB.map(d => ({ value: String(d.device_id), label: `${d.device_id} - ${d.name}` }))}
+                      placeholder="-- Chọn Thiết bị --"
+                      disabled={!formData.feeder_id_b}
+                    />
                   </div>
                 </div>
               </div>
@@ -1475,8 +1418,8 @@ export const LoopsPage: React.FC = () => {
                             • Yêu cầu phê duyệt Sơ đồ đang chờ xử lý ({deleteUsage.pending_approvals.length}):
                           </strong>
                           <div className="bg-slate-950/80 p-2 rounded-lg border border-red-900/40 space-y-1">
-                            {deleteUsage.pending_approvals.map((app: any) => (
-                              <div key={app.id} className="flex justify-between text-slate-300">
+                            {deleteUsage.pending_approvals.map((app: any, _i) => (
+                              <div key={`${app.id}-${_i}`} className="flex justify-between text-slate-300">
                                 <span>Phiên bản v{app.version_str} - Người gửi: {app.requester_fullname}</span>
                                 <span className="text-amber-400 font-bold">{app.status}</span>
                               </div>
@@ -1492,8 +1435,8 @@ export const LoopsPage: React.FC = () => {
                             • Công việc vận hành đang thực hiện ({deleteUsage.active_tasks.length}):
                           </strong>
                           <div className="bg-slate-950/80 p-2 rounded-lg border border-red-900/40 space-y-1">
-                            {deleteUsage.active_tasks.map((task: any) => (
-                              <div key={task.id} className="flex justify-between text-slate-300">
+                            {deleteUsage.active_tasks.map((task: any, _i) => (
+                              <div key={`${task.id}-${_i}`} className="flex justify-between text-slate-300">
                                 <span>[{task.task_code}] {task.title}</span>
                                 <span className="text-blue-400 font-bold">{task.status}</span>
                               </div>
@@ -1509,8 +1452,8 @@ export const LoopsPage: React.FC = () => {
                             • Bất thường / Khiếm khuyết chưa hoàn thành ({deleteUsage.active_issues.length}):
                           </strong>
                           <div className="bg-slate-950/80 p-2 rounded-lg border border-red-900/40 space-y-1">
-                            {deleteUsage.active_issues.map((iss: any) => (
-                              <div key={iss.id} className="flex justify-between text-slate-300">
+                            {deleteUsage.active_issues.map((iss: any, _i) => (
+                              <div key={`${iss.id}-${_i}`} className="flex justify-between text-slate-300">
                                 <span>[{iss.issue_code}] {iss.title}</span>
                                 <span className="text-red-400 font-bold">{iss.status}</span>
                               </div>
@@ -1526,8 +1469,8 @@ export const LoopsPage: React.FC = () => {
                             • Lịch kiểm tra định kỳ đang hoạt động ({deleteUsage.active_schedules.length}):
                           </strong>
                           <div className="bg-slate-950/80 p-2 rounded-lg border border-red-900/40 space-y-1">
-                            {deleteUsage.active_schedules.map((sch: any) => (
-                              <div key={sch.id} className="flex justify-between text-slate-300">
+                            {deleteUsage.active_schedules.map((sch: any, _i) => (
+                              <div key={`${sch.id}-${_i}`} className="flex justify-between text-slate-300">
                                 <span>[{sch.schedule_code}] {sch.title}</span>
                                 <span className="text-emerald-400 font-bold">{sch.status}</span>
                               </div>

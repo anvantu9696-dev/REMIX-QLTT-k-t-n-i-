@@ -7,6 +7,8 @@ import { formatDateTime, formatRelativeTime } from '../utils/dateTime';
 export const AuditLogsPage: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState('');
   const [resultFilter, setResultFilter] = useState('');
@@ -22,15 +24,42 @@ export const AuditLogsPage: React.FC = () => {
         search: search || undefined,
         module: moduleFilter || undefined,
         result: resultFilter || undefined,
-        limit: 100
+        limit: 20
       });
       if (res.success) {
         setLogs(res.data);
+        setNextCursor(res.nextCursor || null);
       }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.getAuditLogs({
+        search: search || undefined,
+        module: moduleFilter || undefined,
+        result: resultFilter || undefined,
+        limit: 20,
+        lastDocId: nextCursor
+      });
+      if (res.success) {
+        setLogs(prev => {
+          const existing = new Set(prev.map(l => l.id));
+          const newItems = res.data.filter((l: any) => !existing.has(l.id));
+          return [...prev, ...newItems];
+        });
+        setNextCursor(res.nextCursor || null);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -114,6 +143,11 @@ export const AuditLogsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Status Bar */}
+      <div className="text-xs font-semibold text-slate-600">
+        Đang hiển thị {logs.length} nhật ký
+      </div>
+
       {/* Logs Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs">
         <div className="overflow-x-auto">
@@ -194,6 +228,18 @@ export const AuditLogsPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {nextCursor && (
+        <div className="mt-6 flex justify-center pb-6">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center transition-colors shadow-sm font-medium"
+          >
+            {loadingMore ? 'Đang tải...' : 'Tải thêm nhật ký'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

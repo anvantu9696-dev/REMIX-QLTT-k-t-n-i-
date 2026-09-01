@@ -18,6 +18,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const token = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
     ...(options.headers as Record<string, string> || {})
   };
 
@@ -28,12 +30,19 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const maxRetries = 2;
   let attempt = 0;
 
+  // Add cache buster to GET requests
+  let finalEndpoint = endpoint;
+  if (!options.method || options.method.toUpperCase() === 'GET') {
+    const separator = finalEndpoint.includes('?') ? '&' : '?';
+    finalEndpoint = `${finalEndpoint}${separator}_t=${Date.now()}`;
+  }
+
   while (attempt <= maxRetries) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     try {
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}${finalEndpoint}`, {
         ...options,
         signal: options.signal || controller.signal,
         headers
@@ -51,6 +60,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       if (!response.ok) {
         if (response.status === 401) {
           setAuthToken(null);
+          window.dispatchEvent(new Event('grid_auth_expired'));
         }
         let message = data?.message;
         if (response.status === 413) {
@@ -124,11 +134,13 @@ export interface ImportReport {
 
 export const api = {
   // Auth
-  login: (username: string, password: string) => 
-    request<AuthSession & { success: boolean; message: string }>('/auth/login', {
+
+  syncAuth: (data: { idToken: string; full_name?: string; photoURL?: string }) => 
+    request<AuthSession & { success: boolean; message: string }>('/auth/sync', {
       method: 'POST',
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify(data)
     }),
+
 
   register: (registerData: {
     full_name: string;
@@ -162,10 +174,13 @@ export const api = {
     }),
 
   // Users
-  getUsers: (params?: { search?: string; role?: string; status?: string; unit?: string; team?: string }) => {
+  getUsers: async (params?: { search?: string; role?: string; status?: string; unit?: string; team?: string }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
     return request<{ success: boolean; data: User[]; total: number }>(`/users${query ? '?' + query : ''}`);
   },
+
+  getAssignableUsers: () =>
+    request<{ success: boolean; data: User[] }>('/users/assignable'),
 
   getPendingUsers: () =>
     request<{ success: boolean; data: User[]; total: number }>('/users/pending'),
@@ -203,6 +218,30 @@ export const api = {
       body: JSON.stringify({ locked })
     }),
 
+  syncUserStatus: (email: string, status: string, uid: string) =>
+    request<{ success: boolean }>('/users/sync/status', {
+      method: 'PATCH',
+      body: JSON.stringify({ email, status, uid })
+    }),
+
+  syncUserRole: (email: string, role: string, uid: string) =>
+    request<{ success: boolean }>('/users/sync/role', {
+      method: 'PATCH',
+      body: JSON.stringify({ email, role, uid })
+    }),
+
+  changeUserRole: (id: number | string, role: string, email?: string) =>
+    request<{ success: boolean; message: string }>(`/users/${id}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role, email })
+    }),
+
+  syncDeleteUser: (email: string, uid: string) =>
+    request<{ success: boolean }>('/users/sync/delete', {
+      method: 'DELETE',
+      body: JSON.stringify({ email, uid })
+    }),
+
   updateUserRole: (id: number, roles: string[], scopes?: any[]) =>
     request<{ success: boolean; message: string }>(`/users/${id}/role`, {
       method: 'PATCH',
@@ -225,9 +264,25 @@ export const api = {
     request<{ success: boolean; roles: any[]; permissions: any[] }>('/roles'),
 
   // Audit Logs
-  getAuditLogs: (params?: { search?: string; module?: string; result?: string; limit?: number }) => {
-    const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: AuditLog[]; total: number }>(`/audit-logs${query ? '?' + query : ''}`);
+  getAuditLogs: (params?: { search?: string; module?: string; result?: string; limit?: number; lastDocId?: string }) => {
+    const limit = params?.limit || 20;
+    let url = `/audit-logs?limit=${limit}`;
+    if (params?.lastDocId) {
+      url += `&lastDocId=${params.lastDocId}`;
+    }
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (key !== 'limit' && key !== 'lastDocId' && value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const extra = searchParams.toString();
+    if (extra) {
+      url += `&${extra}`;
+    }
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null; total?: number }>(url);
   },
 
   // Dashboard Stats
@@ -292,9 +347,25 @@ export const api = {
     }),
 
   // Feeders (Phát tuyến)
-  getFeeders: (params?: { search?: string; substation_id?: string | number; status?: string }) => {
-    const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: any[] }>(`/feeders${query ? '?' + query : ''}`);
+  getFeeders: (params?: { search?: string; substation_id?: string | number; status?: string; limit?: number; lastDocId?: string }) => {
+    const limit = params?.limit || 10;
+    let url = `/feeders?limit=${limit}`;
+    if (params?.lastDocId) {
+      url += `&lastDocId=${params.lastDocId}`;
+    }
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (key !== 'limit' && key !== 'lastDocId' && value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const extra = searchParams.toString();
+    if (extra) {
+      url += `&${extra}`;
+    }
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url);
   },
 
   getFeeder: (id: number) =>
@@ -326,9 +397,25 @@ export const api = {
     );
   },
 
-  getDevices: (params?: any) => {
-    const query = new URLSearchParams(params).toString();
-    return request<{ success: boolean; data: any[] }>(`/devices${query ? '?' + query : ''}`);
+  getDevices: (options?: any) => {
+    const limit = options?.limit || 10;
+    let url = `/devices?limit=${limit}`;
+    if (options?.lastDocId) {
+      url += `&lastDocId=${options.lastDocId}`;
+    }
+    const params = new URLSearchParams();
+    if (options) {
+      Object.entries(options).forEach(([key, value]) => {
+        if (key !== 'limit' && key !== 'lastDocId' && value !== undefined && value !== null && value !== '') {
+          params.append(key, String(value));
+        }
+      });
+    }
+    const extra = params.toString();
+    if (extra) {
+      url += `&${extra}`;
+    }
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url);
   },
 
   getDevice: (id: number | string) =>

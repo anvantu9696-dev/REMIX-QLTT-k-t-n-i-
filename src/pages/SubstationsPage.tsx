@@ -20,11 +20,11 @@ import { useAuth } from '../context/AuthContext';
 import { useRealtimeSync } from '../lib/realtime';
 
 interface SubstationsPageProps {
-  onNavigateToFeeders?: (stationId: number) => void;
+  onNavigateToFeeders?: (stationId: number | string) => void;
 }
 
 export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFeeders }) => {
-  const { isGuest, hasPermission } = useAuth();
+  const { isGuest, hasRole } = useAuth();
   const [substations, setSubstations] = useState<Substation[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -55,6 +55,9 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
   const [deleteError, setDeleteError] = useState('');
   const [deleteUsage, setDeleteUsage] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Detail Modal State
+  const [detailStation, setDetailStation] = useState<Substation | null>(null);
 
   useEffect(() => {
     fetchSubstations();
@@ -208,7 +211,7 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
           </p>
         </div>
 
-        {!isGuest() && hasPermission('equipment:create') && (
+        {!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER')) && (
           <button
             onClick={handleOpenAddModal}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm shrink-0"
@@ -241,7 +244,7 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
       )}
 
       {/* Filters Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-slate-200">
         <div className="relative sm:col-span-2">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
@@ -259,10 +262,17 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
           className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
         >
           <option value="">Tất cả trạng thái</option>
-          <option value="ACTIVE">Đang vận hành (ACTIVE)</option>
-          <option value="MAINTENANCE">Đang bảo dưỡng (MAINTENANCE)</option>
-          <option value="INACTIVE">Tạm ngừng (INACTIVE)</option>
+          <option value="ACTIVE">Đang vận hành</option>
+          <option value="MAINTENANCE">Đang bảo dưỡng</option>
+          <option value="INACTIVE">Tạm ngừng</option>
         </select>
+
+        <button
+          onClick={() => { setSearch(''); setStatusFilter(''); }}
+          className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200"
+        >
+          Xóa bộ lọc
+        </button>
       </div>
 
       {/* Substations Cards Grid */}
@@ -357,6 +367,13 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
               {/* Card Footer Actions */}
               <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs font-semibold">
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setDetailStation(station)}
+                    className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded text-[11px] font-bold hover:bg-slate-200 inline-flex items-center gap-1 shadow-sm"
+                    title="Xem chi tiết"
+                  >
+                    🔍 Chi tiết
+                  </button>
                   {onNavigateToFeeders ? (
                     <button
                       onClick={() => onNavigateToFeeders(station.id)}
@@ -400,7 +417,7 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
 
                 {!isGuest() && (
                   <div className="flex items-center gap-2">
-                    {(hasPermission('equipment:update') || hasPermission('equipment:create')) && (
+                    {((hasRole('ADMIN') || hasRole('MANAGER')) || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
                       <button
                         onClick={() => handleOpenEditModal(station)}
                         className="p-1.5 text-slate-600 hover:text-blue-600 rounded hover:bg-white transition-colors"
@@ -409,7 +426,7 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
                         <Edit2 className="w-4 h-4" />
                       </button>
                     )}
-                    {(hasPermission('equipment:delete') || hasPermission('equipment:update')) && (
+                    {(hasRole('ADMIN') || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
                       <button
                         onClick={() => handleOpenDeleteModal(station)}
                         className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-white transition-colors"
@@ -823,6 +840,35 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
                   <span>{isDeleting ? 'Đang xử lý xóa...' : 'Xác Nhận Xóa Mềm'}</span>
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* DETAIL MODAL */}
+      {detailStation && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <h3 className="font-bold text-slate-900 text-sm">Chi tiết Trạm: {detailStation.name}</h3>
+              <button onClick={() => setDetailStation(null)} className="text-slate-400 hover:text-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4 text-xs text-slate-700">
+              <img src={detailStation.image_url || 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80'} alt={detailStation.name} className="w-full h-48 object-cover rounded-xl" />
+              <div className="grid grid-cols-2 gap-4">
+                <div><span className="font-bold">Mã Trạm:</span> {detailStation.substation_code}</div>
+                <div><span className="font-bold">Trạng thái:</span> {detailStation.status}</div>
+              </div>
+              <div><span className="font-bold">Địa chỉ:</span> {detailStation.address || 'Chưa cập nhật'}</div>
+              <div><span className="font-bold">Ghi chú:</span> {detailStation.notes || 'Không có'}</div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><span className="font-bold">Phát tuyến:</span> {detailStation.feeder_count || 0}</div>
+                <div><span className="font-bold">Thiết bị:</span> {detailStation.device_count || 0}</div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-200 text-right">
+              <button onClick={() => setDetailStation(null)} className="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">Đóng</button>
             </div>
           </div>
         </div>

@@ -11,9 +11,10 @@ interface DeviceCardProps {
   onEdit: (device: Device) => void;
   onDelete: (device: Device) => void;
   isGuest: boolean;
-  hasPermission: (permission: string) => boolean;
+  hasRole: (permission: string) => boolean;
   isSelected?: boolean;
   onToggleSelect?: (deviceId: number) => void;
+  getNormalizedRelations: (device: Device) => { substationName: string; feederName: string; };
 }
 
 export const DeviceCard: React.FC<DeviceCardProps> = ({
@@ -22,9 +23,10 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
   onEdit,
   onDelete,
   isGuest,
-  hasPermission,
+  hasRole,
   isSelected = false,
-  onToggleSelect
+  onToggleSelect,
+  getNormalizedRelations
 }) => {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [zaloQROpen, setZaloQROpen] = useState(false);
@@ -116,11 +118,15 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
         <div className="text-[11px] text-slate-600 space-y-1">
           <div className="flex items-center gap-1.5">
             <Building2 className="w-3.5 h-3.5 text-slate-400" />
-            <span className="truncate">{device.substation_name || 'N/A'}</span>
+            <span className="truncate">{getNormalizedRelations(device).substationName}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <GitCommitHorizontal className="w-3.5 h-3.5 text-slate-400" />
-            <span className="truncate">{device.feeder_name || 'N/A'}</span>
+            <span className="truncate">{getNormalizedRelations(device).feederName}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-slate-400" />
+            <span className="truncate">Dòng chỉnh định: <strong>{device.current_setting || 'N/A'}</strong></span>
           </div>
         </div>
 
@@ -172,7 +178,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
           <QrCode className="w-4 h-4" />
         </button>
 
-        {!isGuest && hasPermission('equipment:update') && (
+        {!isGuest && (hasRole('ADMIN') || hasRole('MANAGER')) && (
             <button
                 onClick={() => onEdit(device)}
                 className="p-1.5 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-100"
@@ -181,7 +187,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
                 <Edit2 className="w-4 h-4" />
             </button>
         )}
-        {!isGuest && hasPermission('equipment:delete') && (
+        {!isGuest && hasRole('ADMIN') && (
             <button
                 onClick={() => onDelete(device)}
                 className="p-1.5 text-slate-500 hover:text-red-600 rounded hover:bg-slate-100"

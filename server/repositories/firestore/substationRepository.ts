@@ -1,5 +1,6 @@
 import { getTargetFirestore } from '../../firebaseAdmin';
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
+import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit } from '../../utils/firestoreCache';
 
 export type Substation = {
   id: string;
@@ -18,30 +19,81 @@ export type Substation = {
 
 export type SubstationCreateInput = Omit<Substation, 'id' | 'version' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'lastOperationId'>;
 
+const CACHE_KEY_ALL = 'substations_list_all';
+
 export const substationRepo = {
-  async list() {
+  async list(options?: { status?: string; limit?: number }) {
+    const cacheKey = options?.status ? `substations_list_${options.status}` : CACHE_KEY_ALL;
+    const cached = getCached<Substation[]>(cacheKey);
+    if (cached) {
+      logCacheHit('substations', cacheKey);
+      return cached;
+    }
+
     const db = getTargetFirestore();
-    const snapshot = await db.collection('substations')
-        .where('isDeleted', '==', false)
-        .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Substation[];
+    let query = db.collection('substations').where('isDeleted', '==', false);
+    
+    if (options?.status) {
+      query = query.where('status', '==', options.status);
+    }
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+
+    const snapshot = await query.get();
+    logFirebaseRead('substations', options?.status ? `status=${options.status}` : 'isDeleted=false', snapshot.size);
+    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Substation[];
+    
+    setCached(cacheKey, list, 60000);
+    return list;
+  },
+
+  async count() {
+    const cached = getCached<number>('substations_count');
+    if (cached !== null) {
+      logCacheHit('substations_count');
+      return cached;
+    }
+
+    const db = getTargetFirestore();
+    const snap = await db.collection('substations').where('isDeleted', '==', false).count().get();
+    const count = snap.data().count;
+    logFirebaseRead('substations', 'count(isDeleted=false)', count);
+    
+    setCached('substations_count', count, 60000);
+    return count;
   },
   
   async getById(id: string) {
+    const cacheKey = `substation_doc_${id}`;
+    const cached = getCached<Substation>(cacheKey);
+    if (cached) {
+      logCacheHit('substation', cacheKey);
+      return cached;
+    }
+
     const db = getTargetFirestore();
     const doc = await db.collection('substations').doc(id).get();
-    if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() } as Substation;
+    logFirebaseRead('substations', `doc(${id})`, doc.exists ? 1 : 0);
+    
+    if (!doc.exists || doc.data()?.isDeleted === true) return null;
+
+    const data = { id: doc.id, ...doc.data() } as Substation;
+    setCached(cacheKey, data, 60000);
+    return data;
   },
 
   async findByCode(code: string) {
-      const db = getTargetFirestore();
-      const snapshot = await db.collection('substations')
-          .where('substation_code', '==', code)
-          .where('isDeleted', '==', false)
-          .get();
-      if (snapshot.empty) return null;
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Substation;
+    const db = getTargetFirestore();
+    const snapshot = await db.collection('substations')
+        .where('substation_code', '==', code)
+        .where('isDeleted', '==', false)
+        .limit(1)
+        .get();
+    logFirebaseRead('substations', `substation_code=${code}`, snapshot.size);
+    
+    if (snapshot.empty) return null;
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Substation;
   },
 
   async exists(id: string) {
@@ -58,6 +110,7 @@ export const substationRepo = {
 
         const docRef = db.collection('substations').doc();
         const now = FieldValue.serverTimestamp();
+        
         const docData = {
             ...data,
             version: 1,
@@ -66,8 +119,13 @@ export const substationRepo = {
             isDeleted: false,
             lastOperationId: operationId
         };
+
         transaction.set(docRef, docData);
         transaction.set(eventRef, { operationId, result: { id: docRef.id, ...docData } });
+        
+        invalidateCache('substations');
+        invalidateCache('dashboard_stats');
+        logFirebaseWrite('substations', docRef.id, 'CREATE');
         return { id: docRef.id, ...docData } as Substation;
     });
   },
@@ -91,7 +149,13 @@ export const substationRepo = {
             updatedAt: now,
             lastOperationId: operationId
         };
+
         transaction.update(docRef, updateData);
+        
+        invalidateCache('substations');
+        invalidateCache(`substation_doc_${id}`);
+        invalidateCache('dashboard_stats');
+        logFirebaseWrite('substations', id, 'UPDATE');
         return { id: doc.id, ...updateData };
     });
   },
@@ -115,7 +179,13 @@ export const substationRepo = {
             version: currentData.version + 1,
             lastOperationId: operationId
         };
+
         transaction.update(docRef, updateData);
+        
+        invalidateCache('substations');
+        invalidateCache(`substation_doc_${id}`);
+        invalidateCache('dashboard_stats');
+        logFirebaseWrite('substations', id, 'DELETE');
         return { id: doc.id, ...updateData };
     });
   }

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { getDb } from './server/db';
+
 import { v4 as uuidv4 } from 'uuid';
 
 import authRoutes from './server/routes/auth';
@@ -27,7 +27,7 @@ import reportRoutes from './server/routes/reports';
 import proposalRoutes from './server/routes/proposals';
 import systemRoutes from './server/routes/system';
 import passwordRoutes from './server/routes/password';
-import debugRoutes from './server/routes/debug';
+import adminDataRecoveryRoutes from './server/routes/adminDataRecovery';
 import healthRoutes from './server/routes/health';
 import { registerEventsEndpoint } from './server/events';
 
@@ -35,8 +35,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Initialize SQLite database
-  await getDb();
+  
+  
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));
@@ -49,6 +49,12 @@ async function startServer() {
   });
 
   // API Routes
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+  });
   app.use('/api/health', healthRoutes);
   app.use('/api/password', passwordRoutes);
   app.use('/api/auth', authRoutes);
@@ -73,7 +79,7 @@ async function startServer() {
   app.use('/api/reports', reportRoutes);
   app.use('/api/proposals', proposalRoutes);
   app.use('/api/system', systemRoutes);
-  app.use('/api/debug', debugRoutes);
+  app.use('/api/admin/data-recovery', adminDataRecoveryRoutes);
 
   // Register Server-Sent Events (SSE) real-time sync endpoint
   registerEventsEndpoint(app);

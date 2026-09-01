@@ -1,0 +1,31 @@
+--- server/routes/import.ts
++++ server/routes/import.ts
+@@ -43,15 +43,28 @@
+   }
+ 
+   // Fetch active substations and feeders for lookup & validation
+-  const substations = dbQuery(`SELECT id, substation_code, name FROM substations WHERE deleted_at IS NULL`);
+-  const substationMap = new Map<string, { id: number; name: string }>();
++  let substations: any[] = [];
++  let feeders: any[] = [];
++  
++  if (CORE_DATA_SOURCE === 'firestore') {
++    substations = await substationRepo.list();
++    feeders = await feederRepo.list();
++  } else {
++    substations = dbQuery(`SELECT id, substation_code, name FROM substations WHERE deleted_at IS NULL`);
++    feeders = dbQuery(`SELECT id, feeder_code, name FROM feeders WHERE deleted_at IS NULL`);
++  }
++
++  const substationMap = new Map<string, { id: any; name: string }>();
+   substations.forEach(s => {
+     substationMap.set(s.substation_code.toUpperCase(), { id: s.id, name: s.name });
+     substationMap.set(s.name.toUpperCase(), { id: s.id, name: s.name });
+   });
+ 
+-  const feeders = dbQuery(`SELECT id, feeder_code, name FROM feeders WHERE deleted_at IS NULL`);
+-  const feederMap = new Map<string, { id: number; name: string; substation_id: number }>();
++  const feederMap = new Map<string, { id: any; name: string; substation_id: any }>();
+   feeders.forEach(f => {
+     feederMap.set(f.feeder_code.toUpperCase(), { id: f.id, name: f.name, substation_id: f.substation_id });
+     feederMap.set(f.name.toUpperCase(), { id: f.id, name: f.name, substation_id: f.substation_id });

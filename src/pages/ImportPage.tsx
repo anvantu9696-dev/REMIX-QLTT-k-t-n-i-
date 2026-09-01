@@ -9,7 +9,7 @@ import { api, ImportReport, ImportItemResult } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
 export const ImportPage: React.FC = () => {
-  const { user, hasPermission } = useAuth();
+  const { user, hasRole } = useAuth();
   const [activeTab, setActiveTab] = useState<'devices' | 'substations' | 'feeders' | 'loops'>('devices');
 
   const [file, setFile] = useState<File | null>(null);
@@ -27,7 +27,7 @@ export const ImportPage: React.FC = () => {
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Access check
-  if (user && !user.roles?.includes('ADMIN') && !user.roles?.includes('CAN_BO_PHUONG_THUC') && !hasPermission('GRID_DATA_IMPORT')) {
+  if (user && !user.roles?.includes('ADMIN') && !hasRole('ADMIN')) {
     return (
       <div className="p-8 text-center space-y-4 max-w-md mx-auto mt-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg">
         <XCircle className="w-16 h-16 text-red-500 mx-auto" />
@@ -148,7 +148,7 @@ export const ImportPage: React.FC = () => {
           else if (/(scada)/.test(h)) { obj.scada_status = val; mapped = true; }
           else if (/(relay|79)/.test(h)) { obj.relay_79 = val; mapped = true; }
           else if (/(status|trạng thái|trang_thai)/.test(h)) { obj.status = val; mapped = true; }
-          else if (/(dòng cài đặt|current setting|cài đặt)/.test(h)) { obj.current_setting = val; mapped = true; }
+          else if (/(dòng chỉnh định|dòng cài đặt|current setting)/.test(h)) { obj.current_setting = val; mapped = true; }
           else if (/(map|link|tọa độ)/.test(h)) { obj.google_maps_url = val; mapped = true; }
           else if (/(ghi chú|notes)/.test(h)) { obj.notes = val; mapped = true; }
           
@@ -195,9 +195,9 @@ export const ImportPage: React.FC = () => {
 
     if (activeTab === 'devices') {
       data = [
-        ["device_id", "name", "device_type", "pole_number", "feeder_code", "substation_code", "unit", "team", "status", "switch_status", "scada_status", "relay_79", "current_setting", "image_url", "google_maps_url"],
-        ["LBS-001", "Cầu dao phụ tải LBS 001", "LBS", "Trụ 12", "471-E1", "T110-E1", "Điện lực Bình Dương", "ĐỘI QLVH", "ACTIVE", "CLOSED", "SIGNAL", "N_A", "300A", "", "https://maps.google.com/?q=10.762,106.660"],
-        ["REC-002", "Máy cắt Recloser 002", "RCL", "Trụ 45", "472-E1", "T110-E1", "Điện lực Bình Dương", "ĐỘI QLVH", "ACTIVE", "CLOSED", "SIGNAL", "N_A", "400A", "", ""]
+        ["Mã thiết bị", "Tên thiết bị", "Loại thiết bị", "Vị trí trụ lắp đặt", "Trạm 110kV", "Phát tuyến", "Đơn vị", "Đội QLVH", "Trạng thái", "Trạng thái cắt", "SCADA", "Rơ le 79", "Dòng chỉnh định", "Vĩ độ (Lat)", "Kinh độ (Lng)", "Ghi chú"],
+        ["LBS-001", "Cầu dao phụ tải LBS 001", "LBS", "Trụ 12", "T110-E1", "471-E1", "Điện lực Bình Dương", "ĐỘI QLVH", "ACTIVE", "CLOSED", "SIGNAL", "N_A", "300A", "10.762", "106.660", ""],
+        ["REC-002", "Máy cắt Recloser 002", "RCL", "Trụ 45", "T110-E1", "472-E1", "Điện lực Bình Dương", "ĐỘI QLVH", "ACTIVE", "CLOSED", "SIGNAL", "N_A", "400A", "", "", ""]
       ];
       filename = 'Mau_Import_Thiet_Bi.xlsx';
       sheetName = 'ThietBi';
@@ -259,7 +259,7 @@ export const ImportPage: React.FC = () => {
           "Đơn vị": d.unit || '',
           "Đội QLVH": d.team || '',
           "Trạng thái": d.status || '',
-          "Dòng cài đặt": d.current_setting || '',
+          "Dòng chỉnh định": d.current_setting || '',
           "Vĩ độ (Lat)": d.latitude || '',
           "Kinh độ (Lng)": d.longitude || '',
           "Ghi chú": d.notes || ''

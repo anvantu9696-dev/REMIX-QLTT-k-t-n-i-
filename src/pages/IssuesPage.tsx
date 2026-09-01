@@ -82,7 +82,12 @@ export const IssuesPage: React.FC = () => {
         api.getUsers()
       ]);
       if (devRes.success) setDevices(devRes.data);
-      if (userRes.success) setUsersList(userRes.data);
+      if (userRes.success) {
+        setUsersList(userRes.data.filter((u: UserType) => 
+          u.status === 'ACTIVE' && 
+          u.roles?.some(r => ['STAFF', 'NHAN_VIEN_VAN_HANH', 'FIELD_OPERATOR'].includes(r))
+        ));
+      }
     } catch (e) {
       console.error(e);
     }
@@ -98,7 +103,7 @@ export const IssuesPage: React.FC = () => {
     setSubmitting(true);
     try {
       const res = await api.reportIssue({
-        device_id: parseInt(formDeviceId, 10),
+        device_id: formDeviceId ? formDeviceId : null,
         title: formTitle,
         content: formContent,
         severity: formSeverity,

@@ -22,13 +22,16 @@ import {
   Zap,
   Activity,
   CheckCheck,
-  LogOut
+  LogOut,
+  Cloud,
+  Mail
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, Theme } from '../context/ThemeContext';
 import { LogoutModal } from '../components/common/LogoutModal';
 import { ChangePasswordModal } from '../components/common/ChangePasswordModal';
+import { GoogleWorkspaceHubModal } from '../components/GoogleWorkspaceHubModal';
 import { SystemBackup } from '../types';
 import { formatDateTime, formatRelativeTime } from '../utils/dateTime';
 
@@ -48,6 +51,7 @@ export const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'THEME' | 'PROFILE' | 'ADMIN'>('THEME');
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
 
   // Backup & Restore states
   const [backups, setBackups] = useState<SystemBackup[]>([]);
@@ -583,10 +587,10 @@ export const SettingsPage: React.FC = () => {
               <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-1">
                 <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Phạm Vi Quản Lý (Scope)</span>
                 <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                  {user?.scopes?.[0]?.scope_value || 'Toàn hệ thống (GLOBAL)'}
+                  {user?.unit || 'Toàn hệ thống (GLOBAL)'}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Loại phân quyền: {user?.scopes?.[0]?.scope_type || 'SYSTEM'}
+                  Loại phân quyền: {'Unit'}
                 </p>
               </div>
 
@@ -600,6 +604,28 @@ export const SettingsPage: React.FC = () => {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Google Workspace (Drive & Gmail) Integration Section */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs flex items-center gap-1.5">
+                  <Cloud className="w-4 h-4 text-blue-500" />
+                  <span>Google Workspace (Google Drive & Gmail)</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Kết nối tài khoản Google để sao lưu dữ liệu lên Drive và gửi/nhận email điều độ qua Gmail API.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setWorkspaceModalOpen(true)}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm flex items-center justify-center space-x-2 shrink-0"
+              >
+                <Cloud className="w-4 h-4" />
+                <span>MỞ GOOGLE WORKSPACE HUB</span>
+              </button>
             </div>
 
             {/* Session Management & Logout Section */}
@@ -1525,10 +1551,11 @@ export const SettingsPage: React.FC = () => {
         <ChangePasswordModal 
           isOpen={passwordModalOpen} 
           onClose={() => setPasswordModalOpen(false)} 
-          userId={user.id}
+          userId={typeof user.id === 'number' ? user.id : 1}
           isAdmin={isAdmin || false}
         />
       )}
+      <GoogleWorkspaceHubModal isOpen={workspaceModalOpen} onClose={() => setWorkspaceModalOpen(false)} />
     </div>
   );
 };
