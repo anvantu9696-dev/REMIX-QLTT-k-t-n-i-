@@ -1,6 +1,7 @@
 export type RoleCode =
   | 'ADMIN'
   | 'MANAGER'
+  | 'SHIFT_LEADER'
   | 'STAFF'
   | 'VIEWER';
 

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Zap, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { Zap, ShieldCheck, AlertCircle, Loader2, UserCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const LoginPage: React.FC = () => {
-  const { login, registerUser } = useAuth();
+  const { login, registerUser, guestLogin } = useAuth();
   
   const [isLoginView, setIsLoginView] = useState(true);
   const [email, setEmail] = useState('');
@@ -11,6 +11,22 @@ export const LoginPage: React.FC = () => {
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
+
+  const handleGuestLogin = async () => {
+    setError(null);
+    setGuestLoading(true);
+    try {
+      const res = await guestLogin();
+      if (!res.success) {
+        setError(res.message || 'Đăng nhập khách thất bại');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Đăng nhập khách thất bại');
+    } finally {
+      setGuestLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,9 +172,27 @@ export const LoginPage: React.FC = () => {
               </div>
               <div className="relative flex justify-center text-sm">
                 <span className="px-2 bg-white text-slate-500">
-                  Xác thực hệ thống
+                  Hoặc
                 </span>
               </div>
+            </div>
+            
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={handleGuestLogin}
+                disabled={guestLoading || loading}
+                className="w-full flex items-center justify-center space-x-2 py-3 px-4 border border-slate-200 rounded-xl shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {guestLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <UserCircle className="w-5 h-5 text-slate-400" />
+                    <span>Đăng nhập nhanh (Chế độ Khách)</span>
+                  </>
+                )}
+              </button>
             </div>
 
             <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-500 bg-slate-50 py-3 rounded-xl border border-slate-100">

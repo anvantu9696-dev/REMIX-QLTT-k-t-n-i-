@@ -15,7 +15,7 @@ import { deviceRepo } from '../repositories/firestore/deviceRepository';
 const router = Router();
 
 // 1. Get List of Substations (Trạm 110kV)
-router.get('/', authenticateToken, requireRole(['equipment:read', 'SUBSTATION_VIEW']), async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', authenticateToken, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF', 'VIEWER']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { search, status, sortBy, sortOrder } = req.query;
 
@@ -92,7 +92,7 @@ router.post(
   '/',
   authenticateToken,
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const {
@@ -155,7 +155,7 @@ router.put(
   '/:id',
   authenticateToken,
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;

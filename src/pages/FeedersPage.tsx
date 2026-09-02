@@ -97,9 +97,9 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
     fetchSubstationsList();
   });
 
-  const fetchSubstationsList = async () => {
+  const fetchSubstationsList = async (options?: {forceRefresh?: boolean}) => {
     try {
-      const res = await api.getSubstations();
+      const res = await api.getSubstations(undefined, options);
       if (res.success) {
         setSubstations(res.data);
       }
@@ -108,7 +108,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
     }
   };
 
-  const fetchFeeders = async () => {
+  const fetchFeeders = async (options?: {forceRefresh?: boolean}) => {
     setLoading(true);
     try {
       const res = await api.getFeeders({
@@ -116,7 +116,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
         substation_id: substationFilter,
         status: statusFilter,
         limit: 10
-      });
+      }, options);
       if (res.success) {
         setFeeders(res.data);
         setNextCursor(res.nextCursor || null);
@@ -289,7 +289,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
           </p>
         </div>
 
-        {!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER')) && (
+        {!isGuest() && (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
           <button
             onClick={handleOpenAddModal}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm shrink-0"
@@ -436,7 +436,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
 
                         {!isGuest() && (
                           <>
-                            {(hasRole('ADMIN') || hasRole('MANAGER')) && (
+                            {(hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
                               <button
                                 onClick={() => handleOpenEditModal(feeder)}
                                 className="p-1.5 text-slate-600 hover:text-blue-600 rounded hover:bg-slate-100 transition-colors"

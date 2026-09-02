@@ -75,7 +75,7 @@ export const DocumentsPage: React.FC = () => {
           </p>
         </div>
 
-        {(hasRole('ADMIN') || hasRole('MANAGER')) && !isGuest() && (
+        {(hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && !isGuest() && (
           <button
             onClick={() => setAddModalOpen(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md flex items-center space-x-2 shrink-0"

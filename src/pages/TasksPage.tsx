@@ -51,7 +51,7 @@ import { formatDateTime, formatRelativeTime, formatDate } from '../utils/dateTim
 import { PrintChecklistModal } from '../components/PrintChecklistModal';
 
 export const TasksPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'my' | 'archived'>('all');
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -439,7 +439,7 @@ export const TasksPage: React.FC = () => {
            itemObj = td?.checklist_items?.find((i: any) => String(i.id) === String(itemIdStr));
         }
         return {
-          device_id: devIdStr === 'legacy' ? undefined : parseInt(devIdStr, 10),
+          device_id: devIdStr === 'legacy' ? undefined : devIdStr,
           checklist_item_id: itemIdStr,
           item_content: itemObj?.content || '',
           standard_value: itemObj?.standard_value || '',
@@ -699,39 +699,12 @@ export const TasksPage: React.FC = () => {
   };
 
   const checkIsSupervisor = () => {
-    if (!user) return false;
-    return (
-      user.roles?.some((r: string) => ['ADMIN', 'LÃNH ĐẠO', 'ĐỘI TRƯỞNG', 'QUẢN_LÝ', 'DIEU_DO'].includes(r)) ||
-      user.permissions?.includes('tasks:approve') ||
-      user.permissions?.includes('tasks:create') ||
-      user.permissions?.includes('tasks:manage')
-    );
+    return hasRole('ADMIN') || hasRole('MANAGER');
   };
 
   // STRICT REQUIREMENT: Only "Cán bộ phương thức" or "Admin" can create tasks and approve completed tasks
   const isCanBoPhuongThucOrAdmin = () => {
-    if (!user) return false;
-    const roles: string[] = user.roles || [];
-    const roleNames: string[] = (user as any).role_names || [];
-    return (
-      roles.includes('CAN_BO_PHUONG_THUC') ||
-      roles.includes('ADMIN') ||
-      roles.some((r: string) => {
-        const code = String(r).toUpperCase();
-        return (
-          code === 'CAN_BO_PHUONG_THUC' ||
-          code === 'ADMIN' ||
-          code.includes('PHUONG_THUC') ||
-          code.includes('QUAN_TRI') ||
-          code.includes('CÁN BỘ PHƯƠNG THỨC') ||
-          code.includes('QUẢN TRỊ')
-        );
-      }) ||
-      roleNames.some((n: string) => {
-        const name = String(n).toLowerCase();
-        return name.includes('phương thức') || name.includes('quản trị') || name.includes('admin');
-      })
-    );
+    return hasRole('ADMIN') || hasRole('MANAGER');
   };
 
   const canCreateTask = isCanBoPhuongThucOrAdmin();

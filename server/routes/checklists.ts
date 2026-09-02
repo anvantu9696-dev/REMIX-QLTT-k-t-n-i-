@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticateToken, AuthenticatedRequest, denyGuestMutations } from '../middleware.js';
+import { authenticateToken, AuthenticatedRequest, denyGuestMutations, requireRole } from '../middleware.js';
 import { getTargetFirestore } from '../firebaseAdmin.js';
 
 export const EVN_STANDARD_TEMPLATES = [
@@ -114,13 +114,13 @@ router.get('/presets', (req, res) => {
 });
 
 // POST /api/checklists/sync-evn
-router.post('/sync-evn', async (req, res) => {
+router.post('/sync-evn', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
   await ensureEVNChecklists();
   res.json({ success: true, message: 'Đã đồng bộ mẫu EVN chuẩn' });
 });
 
 // POST /api/checklists
-router.post('/', async (req: AuthenticatedRequest, res) => {
+router.post('/', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res) => {
   const { title, category, description, version, target_device_type, items } = req.body;
   if (!title) return res.status(400).json({ success: false, message: 'Thiếu tên mẫu' });
   try {
@@ -155,7 +155,7 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
 });
 
 // PATCH /api/checklists/:id
-router.patch('/:id', async (req: AuthenticatedRequest, res) => {
+router.patch('/:id', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res) => {
   const id = req.params.id;
   const { title, category, description, version, target_device_type, items } = req.body;
   try {
@@ -182,7 +182,7 @@ router.patch('/:id', async (req: AuthenticatedRequest, res) => {
 });
 
 // DELETE /api/checklists/:id
-router.delete('/:id', async (req: AuthenticatedRequest, res) => {
+router.delete('/:id', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res) => {
   try {
     const db = getTargetFirestore();
     await db.collection('checklists').doc(req.params.id).update({

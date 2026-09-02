@@ -57,8 +57,10 @@ export const feederRepo = {
       }
     }
 
-    if (options?.limit) {
-      query = query.limit(options.limit);
+    const limit = options?.limit || 500;
+    if (limit) {
+      query = query.limit(limit);
+      
     }
 
     const snapshot = await query.get();

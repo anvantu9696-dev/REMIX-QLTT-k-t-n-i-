@@ -7,7 +7,7 @@ router.use(authenticateToken);
 router.use(denyGuestMutations);
 
 // GET /api/documents
-router.get('/', requireRole(['ADMIN', 'MANAGER', 'STAFF', 'VIEWER']), async (req: AuthenticatedRequest, res) => {
+router.get('/', requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF', 'VIEWER']), async (req: AuthenticatedRequest, res) => {
   try {
     const db = getTargetFirestore();
     const snapshot = await db.collection('documents')
@@ -35,7 +35,7 @@ router.get('/', requireRole(['ADMIN', 'MANAGER', 'STAFF', 'VIEWER']), async (req
 });
 
 // POST /api/documents
-router.post('/', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res) => {
+router.post('/', requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), async (req: AuthenticatedRequest, res) => {
   const { title, document_code, category, file_url } = req.body;
   
   if (!title || !document_code || !category) {

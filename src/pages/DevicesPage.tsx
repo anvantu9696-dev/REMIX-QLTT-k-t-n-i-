@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Zap, Plus, Search, Building2, GitCommitHorizontal, MapPin, Edit2, Trash2, Eye, AlertCircle, X, CheckCircle2, ExternalLink, ShieldAlert, Activity, Layers, Check, AlertTriangle, Radio, Download, Compass, LayoutGrid, List, Upload, Camera, QrCode } from 'lucide-react';
+import { Zap, Plus, Search, Building2, GitCommitHorizontal, MapPin, Edit2, Trash2, Eye, AlertCircle, X, CheckCircle2, ExternalLink, ShieldAlert, Activity, Layers, Check, AlertTriangle, Radio, Download, Compass, LayoutGrid, List, Upload, Camera, QrCode, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { normalizeDeviceRelations } from '../utils/deviceNormalizer';
 import { Device, Substation, Feeder, DeviceType, SwitchStatus, ScadaStatus } from '../types';
@@ -40,6 +40,14 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
 
   // Filters
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    // Only search if keyword is >= 2 chars, or empty (cleared)
+    if (search.length === 1) return;
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const [stationFilter, setStationFilter] = useState('');
   const [feederFilter, setFeederFilter] = useState<string>(initialFeederId ? String(initialFeederId) : '');
   
@@ -59,7 +67,6 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
   const [sortBy, setSortBy] = useState<string>('device_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
-  const [totalDevicesCount, setTotalDevicesCount] = useState<number>(0);
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -118,28 +125,22 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
   useEffect(() => {
     const init = async () => {
       await fetchMetadata();
-      await fetchDevices({ limit: 10 });
     };
     init();
   }, []);
 
-  // Removed separate fetchDevices effect
   useEffect(() => {
-    if (substations.length > 0 || feeders.length > 0) {
-      fetchDevices({ limit: 10 });
-    }
-  }, [search, stationFilter, feederFilter, typeFilter, switchFilter, scadaFilter, batteryFilter]);
+    fetchDevices({ limit: 10 });
+  }, [debouncedSearch, stationFilter, feederFilter, typeFilter, switchFilter, scadaFilter, batteryFilter]);
 
-  const fetchMetadata = async () => {
+  const fetchMetadata = async (options?: {forceRefresh?: boolean}) => {
     try {
-      const [stRes, fdRes, allDevRes] = await Promise.all([
-        api.getSubstations(),
-        api.getFeeders(),
-        api.getDevices({ limit: 10 })
+      const [stRes, fdRes] = await Promise.all([
+        api.getSubstations(undefined, options),
+        api.getFeeders(undefined, options)
       ]);
       if (stRes.success) setSubstations(stRes.data);
       if (fdRes.success) setFeeders(fdRes.data);
-      if (allDevRes.success) setTotalDevicesCount(allDevRes.data.length);
     } catch (e) {
       console.error(e);
     }
@@ -149,16 +150,16 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     setLoading(true);
     try {
       const params: any = {};
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (stationFilter) params.substation_id = stationFilter;
       if (feederFilter) params.feeder_id = feederFilter;
       if (typeFilter) params.type = typeFilter;
       if (switchFilter) params.switch_status = switchFilter;
       if (scadaFilter) params.scada_status = scadaFilter;
       if (batteryFilter) params.battery_status = batteryFilter;
-      params.limit = 10;
+      params.limit = debouncedSearch ? 30 : 10;
 
-      const res = await api.getDevices(params);
+      const res = await api.getDevices({ ...params, ...options });
       if (res.success) {
         setDevices(res.data);
         setNextCursor(res.nextCursor || null);
@@ -175,14 +176,14 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     setLoadingMore(true);
     try {
       const params: any = {};
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (stationFilter) params.substation_id = stationFilter;
       if (feederFilter) params.feeder_id = feederFilter;
       if (typeFilter) params.type = typeFilter;
       if (switchFilter) params.switch_status = switchFilter;
       if (scadaFilter) params.scada_status = scadaFilter;
       if (batteryFilter) params.battery_status = batteryFilter;
-      params.limit = 10;
+      params.limit = debouncedSearch ? 30 : 10;
       params.lastDocId = nextCursor;
 
       const res = await api.getDevices(params);
@@ -313,10 +314,17 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     setSubmitting(true);
     try {
       if (editingDevice) {
-        await api.updateDevice(editingDevice.id, formData);
+        await api.updateDevice(editingDevice.id, {
+          ...formData,
+          expectedVersion: editingDevice.version,
+          operationId: `WEB-UPDATE-${Date.now()}`
+        });
         setSuccess(`Đã cập nhật thông tin thiết bị ${formData.name}`);
       } else {
-        await api.createDevice(formData);
+        await api.createDevice({
+          ...formData,
+          operationId: `WEB-CREATE-${Date.now()}`
+        });
         setSuccess(`Đã tạo thành công thiết bị ${formData.name}`);
       }
       setModalOpen(false);
@@ -598,7 +606,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
             </button>
           )}
 
-          {!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER')) && (
+          {!isGuest() && (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
             <button
               onClick={handleOpenAddModal}
               className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
@@ -837,7 +845,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
         onOpenBulkStatusModal={() => setBulkStatusModalOpen(true)}
         onOpenBulkExportModal={() => setBulkExportModalOpen(true)}
         onQuickUpdateStatus={handleQuickUpdateStatus}
-        canUpdate={!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER'))}
+        canUpdate={!isGuest() && (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER')))}
       />
 
       {/* Devices Data Table */}

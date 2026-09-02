@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { authenticateToken, AuthenticatedRequest, denyGuestMutations } from '../middleware.js';
+import { authenticateToken, AuthenticatedRequest, denyGuestMutations, requireRole } from '../middleware.js';
 import { getTargetFirestore } from '../firebaseAdmin.js';
 import { broadcastRealtimeEvent } from '../events.js';
 
@@ -58,7 +58,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     if (priority) query = query.where('priority', '==', priority);
 
     // RBAC: STAFF sees assigned, ADMIN/MANAGER sees all
-    const isStaff = !isManagerOrAdmin(req.user) && req.user!.roles.includes('STAFF');
+    const isStaff = (!isManagerOrAdmin(req.user) && !req.user!.roles.includes("SHIFT_LEADER")) && req.user!.roles.includes('STAFF');
     if (isStaff) {
       query = query.where('assigned_to_username', '==', req.user!.username);
     }
@@ -109,7 +109,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
     const task = doc.data() as any;
     if (task.deleted_at) return res.status(404).json({ success: false, message: 'Not found' });
 
-    if (!isTaskAssignee(task, req.user) && !isTaskCreator(task, req.user) && !isManagerOrAdmin(req.user)) {
+    if (!isTaskAssignee(task, req.user) && !isTaskCreator(task, req.user) && (!isManagerOrAdmin(req.user) && !req.user!.roles.includes("SHIFT_LEADER"))) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -120,7 +120,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 // 4. POST /api/tasks
-router.post('/', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const db = getTargetFirestore();
     const year = new Date().getFullYear();
@@ -243,7 +243,7 @@ router.get('/:id/history', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 // 17. DELETE /api/tasks/:id
-router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const db = getTargetFirestore();
     const ref = db.collection('tasks').doc(req.params.id);

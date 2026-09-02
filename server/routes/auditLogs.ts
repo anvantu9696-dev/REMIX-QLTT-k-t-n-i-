@@ -10,28 +10,44 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   const { 
     search, module, action, result, 
     start_date, end_date, 
-    page = '1', limit = '20' 
+    limit = '20', lastDocId 
   } = req.query;
 
   try {
     const db = getTargetFirestore();
-    const snap = await db.collection('audit_logs').orderBy('timestamp', 'desc').get();
-    let logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+    let query = db.collection('audit_logs').orderBy('timestamp', 'desc');
 
-    if (module) logs = logs.filter(l => l.module === module);
-    if (action) logs = logs.filter(l => l.action === action);
-    if (result) logs = logs.filter(l => l.result === result);
+    if (module) query = query.where('module', '==', module);
+    if (action) query = query.where('action', '==', action);
+    if (result) query = query.where('result', '==', result);
     
+    // In Firestore, if we have inequality filters, they must be on the same field as the first orderBy
     if (start_date) {
-        const sd = new Date(start_date as string).getTime();
-        logs = logs.filter(l => new Date(l.timestamp).getTime() >= sd);
+        query = query.where('timestamp', '>=', new Date(start_date as string).toISOString());
     }
     if (end_date) {
-        // end of day logic
         const ed = new Date(end_date as string);
         ed.setHours(23,59,59,999);
-        logs = logs.filter(l => new Date(l.timestamp).getTime() <= ed.getTime());
+        query = query.where('timestamp', '<=', ed.toISOString());
     }
+
+    let parsedLimit = parseInt(limit as string, 10) || 20;
+
+    if (lastDocId) {
+      const lastDoc = await db.collection('audit_logs').doc(lastDocId as string).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+
+    let snap;
+    if (search) {
+       snap = await query.limit(100).get(); // fetch more to filter in memory
+    } else {
+       snap = await query.limit(parsedLimit + 1).get();
+    }
+    
+    let logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
     if (search) {
       const term = (search as string).toLowerCase();
@@ -41,25 +57,22 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
         (l.details && l.details.toLowerCase().includes(term)) ||
         (l.target_id && String(l.target_id).toLowerCase().includes(term))
       );
+      logs = logs.slice(0, parsedLimit + 1);
     }
 
-    const total = logs.length;
-    const pageSize = parseInt(limit as string, 10) || 20;
-    const currentPage = parseInt(page as string, 10) || 1;
-    const offset = (currentPage - 1) * pageSize;
+    const hasMore = logs.length > parsedLimit;
+    if (hasMore) {
+        logs.pop();
+    }
 
-    const pagedLogs = logs.slice(offset, offset + pageSize);
-
-    return res.json({
-      success: true,
-      data: pagedLogs,
-      total,
-      page: currentPage,
-      limit: pageSize,
-      total_pages: Math.ceil(total / pageSize)
+    return res.json({ 
+        success: true, 
+        data: logs, 
+        nextCursor: hasMore ? logs[logs.length - 1].id : undefined
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Lỗi khi lấy nhật ký hệ thống: ' + error.message });
+    console.error('Lỗi khi lấy audit logs:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ: ' + error.message });
   }
 });
 

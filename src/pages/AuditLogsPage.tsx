@@ -10,18 +10,24 @@ export const AuditLogsPage: React.FC = () => {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const [moduleFilter, setModuleFilter] = useState('');
   const [resultFilter, setResultFilter] = useState('');
 
   useEffect(() => {
     fetchAuditLogs();
-  }, [search, moduleFilter, resultFilter]);
+  }, [debouncedSearch, moduleFilter, resultFilter]);
 
   const fetchAuditLogs = async () => {
     setLoading(true);
     try {
       const res = await api.getAuditLogs({
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         module: moduleFilter || undefined,
         result: resultFilter || undefined,
         limit: 20

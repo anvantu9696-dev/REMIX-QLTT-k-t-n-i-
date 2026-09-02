@@ -50,7 +50,7 @@ router.post(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['equipment:update', 'DEVICE_EDIT']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   (req: AuthenticatedRequest, res: Response) => {
     try {
       return res.status(501).json({ success: false, message: 'Cập nhật hàng loạt chưa được hỗ trợ trên cơ sở dữ liệu hiện tại.' });
@@ -90,8 +90,8 @@ router.get('/', authenticateToken, validatePayload, async (req: AuthenticatedReq
               status: status ? (status as string) : undefined,
               lastDocId: lastDocId ? (lastDocId as string) : undefined
             }),
-            substationRepo.list(),
-            feederRepo.list()
+            substationRepo.list({ limit: 100 }),
+            feederRepo.list({ limit: 100 })
         ]);
         const subMap = new Map(substations.map(s => [String(s.id), s]));
         const feederMap = new Map(feeders.map(f => [String(f.id), f]));
@@ -182,7 +182,7 @@ router.post(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const {
@@ -226,6 +226,7 @@ router.post(
               notes: req.body.notes,
               latitude: latitude ? parseFloat(latitude) : undefined,
               longitude: longitude ? parseFloat(longitude) : undefined,
+              google_maps_url: req.body.google_maps_url,
               pole_number: req.body.pole_number,
               switch_status: req.body.switch_status,
               scada_status: req.body.scada_status,
@@ -262,7 +263,7 @@ router.put(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -297,6 +298,7 @@ router.put(
                   notes: req.body.notes !== undefined ? req.body.notes : device.notes,
                   latitude: latitude ? parseFloat(latitude) : device.latitude,
                   longitude: longitude ? parseFloat(longitude) : device.longitude,
+                  google_maps_url: req.body.google_maps_url !== undefined ? req.body.google_maps_url : device.google_maps_url,
                   pole_number: req.body.pole_number !== undefined ? req.body.pole_number : device.pole_number,
                   switch_status: req.body.switch_status || device.switch_status,
                   scada_status: req.body.scada_status || device.scada_status,
@@ -381,7 +383,7 @@ router.post(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     if (!DEVICE_IMAGE_FEATURE_ENABLED) {
         return res.status(503).json({ success: false, code: 'IMAGE_FEATURE_TEMPORARILY_DISABLED', message: 'Chức năng cập nhật hình ảnh đang tạm khóa.' });
@@ -455,7 +457,7 @@ router.delete(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     if (!DEVICE_IMAGE_FEATURE_ENABLED) {
         return res.status(503).json({ success: false, code: 'IMAGE_FEATURE_TEMPORARILY_DISABLED', message: 'Chức năng cập nhật hình ảnh đang tạm khóa.' });
@@ -481,7 +483,7 @@ router.put(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     if (!DEVICE_IMAGE_FEATURE_ENABLED) {
         return res.status(503).json({ success: false, code: 'IMAGE_FEATURE_TEMPORARILY_DISABLED', message: 'Chức năng cập nhật hình ảnh đang tạm khóa.' });

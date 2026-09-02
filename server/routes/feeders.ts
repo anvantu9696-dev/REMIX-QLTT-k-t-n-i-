@@ -116,7 +116,7 @@ router.post(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { feeder_code, name, substation_id, start_point, end_point, notes, status, operationId } = req.body;
@@ -171,7 +171,7 @@ router.put(
   authenticateToken, validatePayload,
 
   denyGuestMutations,
-  requireRole(['ADMIN', 'MANAGER']),
+  requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;

@@ -135,7 +135,7 @@ router.post('/reset', authenticateToken, denyGuestMutations, handleResetLoops);
 router.post('/reset-all', authenticateToken, denyGuestMutations, handleResetLoops);
 
 // GET /api/loops - List all ring loops
-router.get('/', authenticateToken, requireRole(['equipment:read', 'LOOP_VIEW']), async (req: AuthenticatedRequest, res) => {
+router.get('/', authenticateToken, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF', 'VIEWER']), async (req: AuthenticatedRequest, res) => {
   try {
     const { search, status, substation_id, feeder_id, sortBy, sortOrder } = req.query;
 
@@ -337,7 +337,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/loops - Create new loop with strict validation & transaction
-router.post('/', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res) => {
+router.post('/', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), async (req: AuthenticatedRequest, res) => {
   try {
     
         const { loop_id, name, substation_id_a, feeder_id_a, device_id_a, substation_id_b, feeder_id_b, device_id_b, loop_device_id, status, operation_status, configuration_status, notes } = req.body;
@@ -393,7 +393,7 @@ router.post('/', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'M
 });
 
 // PUT /api/loops/:id - Update Loop metadata
-router.put('/:id', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedRequest, res) => {
+router.put('/:id', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), async (req: AuthenticatedRequest, res) => {
   try {
     
         const { id } = req.params;
@@ -485,7 +485,7 @@ router.delete('/:id', authenticateToken, denyGuestMutations, requireRole(['ADMIN
 });
 
 // POST /api/loops/:id/versions - Create/Save a new topology version
-router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER']), (req: AuthenticatedRequest, res) => {
+router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { nodes, edges, change_summary, reason, submit_for_approval = false } = req.body;
@@ -569,7 +569,7 @@ router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(
 });
 
 // POST /api/loops/:id/restore-version - Restore a previous version by creating a NEW version
-router.post('/:id/restore-version', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER']), (req: AuthenticatedRequest, res) => {
+router.post('/:id/restore-version', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { version_id, reason } = req.body;

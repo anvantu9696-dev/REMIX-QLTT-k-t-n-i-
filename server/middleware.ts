@@ -64,7 +64,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     if (!role && Array.isArray(userRow.roles) && userRow.roles.length > 0) {
        role = userRow.roles[0];
     }
-    if (!['ADMIN', 'MANAGER', 'STAFF', 'VIEWER'].includes(role)) {
+    if (!['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF', 'VIEWER'].includes(role)) {
        role = 'VIEWER'; // fallback strict
     }
 
@@ -90,7 +90,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
 
 export function denyGuestMutations(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.user) return res.status(401).json({ success: false, errorType: 'TOKEN_INVALID', message: 'Chưa đăng nhập' });
-  const isOnlyGuest = req.user.roles.includes('VIEWER') && !req.user.roles.some(r => ['ADMIN', 'MANAGER', 'STAFF'].includes(r));
+  const isOnlyGuest = req.user.roles.includes('VIEWER') && !req.user.roles.some(r => ['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF'].includes(r));
   const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase());
 
   if (isOnlyGuest && isMutating) {

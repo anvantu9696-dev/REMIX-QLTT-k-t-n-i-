@@ -22,22 +22,19 @@ router.post('/sync', async (req, res) => {
     }
     
     const firebase_uid = decodedToken.uid;
-    const email = decodedToken.email?.toLowerCase();
-    
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Token không chứa email' });
-    }
+    const isAnonymous = decodedToken.provider_id === 'anonymous' || !decodedToken.email;
+    const email = decodedToken.email?.toLowerCase() || `guest_${firebase_uid}@anonymous.local`;
 
     const db = getTargetFirestore();
-    let username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    let username = isAnonymous ? `guest_${firebase_uid.slice(0, 8)}` : email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
     
     const userRef = db.collection('users').doc(firebase_uid);
     const userDoc = await userRef.get();
 
     let userData;
     if (!userDoc.exists) {
-      // 6. REGISTER: role: VIEWER, status: PENDING
-      const status = 'PENDING';
+      // 6. REGISTER: role: VIEWER, status: ACTIVE for guest, PENDING for normal
+      const status = isAnonymous ? 'ACTIVE' : 'PENDING';
       const role = 'VIEWER';
       
       let finalUsername = username;
@@ -55,7 +52,7 @@ router.post('/sync', async (req, res) => {
         role: role,
         roles: [role],
         status: status,
-        isActive: false,
+        isActive: isAnonymous ? true : false,
         authProvider: 'firebase',
         photoURL: photoURL || '',
         createdAt: new Date().toISOString(),
@@ -127,6 +124,12 @@ router.get('/me', authenticateToken, (req: AuthenticatedRequest, res) => {
     success: true,
     user: req.user,
   });
+});
+
+router.get('/guest-config', (req, res) => {
+  const email = process.env.GUEST_EMAIL || 'guest@scada.com';
+  const password = process.env.GUEST_PASSWORD || 'GuestPassword123!';
+  return res.json({ success: true, email, password });
 });
 
 export default router;

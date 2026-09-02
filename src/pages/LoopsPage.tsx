@@ -668,7 +668,7 @@ export const LoopsPage: React.FC = () => {
             </label>
           )}
 
-          {!isGuest() && ((hasRole('ADMIN') || hasRole('MANAGER')) || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
+          {!isGuest() && ((hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) || (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER')))) && (
             <button
               onClick={handleOpenCreateModal}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all text-xs"
@@ -1058,7 +1058,7 @@ export const LoopsPage: React.FC = () => {
                       </button>
                     )}
 
-                    {!isGuest() && (hasRole('ADMIN') || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
+                    {!isGuest() && (hasRole('ADMIN') || (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER')))) && (
                       <button
                         onClick={() => handleOpenDeleteModal(loop)}
                         className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"

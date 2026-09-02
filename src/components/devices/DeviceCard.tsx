@@ -178,7 +178,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
           <QrCode className="w-4 h-4" />
         </button>
 
-        {!isGuest && (hasRole('ADMIN') || hasRole('MANAGER')) && (
+        {!isGuest && (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
             <button
                 onClick={() => onEdit(device)}
                 className="p-1.5 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-100"

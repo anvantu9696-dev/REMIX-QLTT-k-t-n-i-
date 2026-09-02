@@ -1,3 +1,4 @@
+import { getCache, setCache, invalidateCacheByPrefix, clearAllCache, invalidateRelatedDeviceCache } from './idbCache';
 import { AuthSession, User, AuditLog, Notification, DocumentItem, GuideItem, DashboardStats, SystemBackup } from '../types';
 
 const API_BASE = '/api';
@@ -14,7 +15,12 @@ export function setAuthToken(token: string | null): void {
   }
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export interface CustomRequestInit extends RequestInit {
+  cacheTtl?: number;
+  forceRefresh?: boolean;
+}
+
+async function request<T>(endpoint: string, options: CustomRequestInit = {}): Promise<T> {
   const token = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -27,15 +33,31 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+
   const maxRetries = 2;
   let attempt = 0;
 
+  // Cache logic
+  const isGet = !options.method || options.method.toUpperCase() === 'GET';
+  const shouldCache = isGet && options.cacheTtl && options.cacheTtl > 0;
+  
+  // Clean endpoint for cache key (remove dynamic _t parameter if it was added)
+  const cacheKey = endpoint; 
+
+  if (shouldCache && !options.forceRefresh) {
+    const cachedData = await getCache<T>(cacheKey);
+    if (cachedData !== null) {
+      return cachedData;
+    }
+  }
+
   // Add cache buster to GET requests
   let finalEndpoint = endpoint;
-  if (!options.method || options.method.toUpperCase() === 'GET') {
+  if (isGet) {
     const separator = finalEndpoint.includes('?') ? '&' : '?';
     finalEndpoint = `${finalEndpoint}${separator}_t=${Date.now()}`;
   }
+
 
   while (attempt <= maxRetries) {
     const controller = new AbortController();
@@ -82,6 +104,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
         throw error;
       }
     
+      if (shouldCache && response.ok) {
+        // Save to cache
+        await setCache(cacheKey, data as T, options.cacheTtl!);
+      }
       return data as T;
     } catch (error: any) {
       clearTimeout(timeoutId);
@@ -135,6 +161,8 @@ export interface ImportReport {
 export const api = {
   // Auth
 
+  getGuestConfig: () =>
+    request<{ success: boolean; email?: string; password?: string; message?: string }>('/auth/guest-config'),
   syncAuth: (data: { idToken: string; full_name?: string; photoURL?: string }) => 
     request<AuthSession & { success: boolean; message: string }>('/auth/sync', {
       method: 'POST',
@@ -157,11 +185,6 @@ export const api = {
     request<{ success: boolean; message: string; data?: any }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(registerData)
-    }),
-
-  guestLogin: () =>
-    request<AuthSession & { success: boolean; message: string }>('/auth/guest-login', {
-      method: 'POST'
     }),
 
   getMe: () => 
@@ -287,7 +310,7 @@ export const api = {
 
   // Dashboard Stats
   getDashboardStats: () =>
-    request<{ success: boolean; data: DashboardStats }>('/dashboard/stats'),
+    request<{ success: boolean; data: DashboardStats }>('/dashboard/stats', { cacheTtl: 180 }),
 
   // Notifications
   getNotifications: (params?: { status?: string; limit?: number }) => {
@@ -320,13 +343,13 @@ export const api = {
     request<{ success: boolean; data: GuideItem[] }>('/guides'),
 
   // Substations (Trạm 110kV)
-  getSubstations: (params?: { search?: string; status?: string }) => {
+  getSubstations: (params?: { search?: string; status?: string }, options?: CustomRequestInit) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: any[] }>(`/substations${query ? '?' + query : ''}`);
+    return request<{ success: boolean; data: any[] }>(`/substations${query ? '?' + query : ''}`, { cacheTtl: 86400, ...options });
   },
 
-  getSubstation: (id: number) =>
-    request<{ success: boolean; data: any }>(`/substations/${id}`),
+  getSubstation: (id: number, options?: CustomRequestInit) =>
+    request<{ success: boolean; data: any }>(`/substations/${id}`, { cacheTtl: 86400, ...options }),
 
   createSubstation: (data: any, operationId?: string) =>
     request<{ success: boolean; message: string; data: any }>('/substations', {
@@ -347,7 +370,7 @@ export const api = {
     }),
 
   // Feeders (Phát tuyến)
-  getFeeders: (params?: { search?: string; substation_id?: string | number; status?: string; limit?: number; lastDocId?: string }) => {
+  getFeeders: (params?: { search?: string; substation_id?: string | number; status?: string; limit?: number; lastDocId?: string }, options?: CustomRequestInit) => {
     const limit = params?.limit || 10;
     let url = `/feeders?limit=${limit}`;
     if (params?.lastDocId) {
@@ -365,11 +388,11 @@ export const api = {
     if (extra) {
       url += `&${extra}`;
     }
-    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url);
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url, { ...options });
   },
 
-  getFeeder: (id: number) =>
-    request<{ success: boolean; data: any }>(`/feeders/${id}`),
+  getFeeder: (id: number, options?: CustomRequestInit) =>
+    request<{ success: boolean; data: any }>(`/feeders/${id}`, { cacheTtl: 43200, ...options }),
 
   createFeeder: (data: any, operationId?: string) =>
     request<{ success: boolean; message: string; data: any }>('/feeders', {
@@ -397,7 +420,7 @@ export const api = {
     );
   },
 
-  getDevices: (options?: any) => {
+  getDevices: (options?: any & CustomRequestInit) => {
     const limit = options?.limit || 10;
     let url = `/devices?limit=${limit}`;
     if (options?.lastDocId) {
@@ -406,7 +429,7 @@ export const api = {
     const params = new URLSearchParams();
     if (options) {
       Object.entries(options).forEach(([key, value]) => {
-        if (key !== 'limit' && key !== 'lastDocId' && value !== undefined && value !== null && value !== '') {
+        if (key !== 'limit' && key !== 'lastDocId' && key !== 'forceRefresh' && key !== 'cacheTtl' && key !== 'signal' && value !== undefined && value !== null && value !== '') {
           params.append(key, String(value));
         }
       });
@@ -415,35 +438,60 @@ export const api = {
     if (extra) {
       url += `&${extra}`;
     }
-    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url);
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url, { ...options });
   },
 
   getDevice: (id: number | string) =>
-    request<{ success: boolean; data: any }>(`/devices/${id}`),
+    request<{ success: boolean; data: any }>(`/devices/${id}`, { cacheTtl: 900 }),
 
-  createDevice: (data: any, operationId?: string) =>
-    request<{ success: boolean; message: string; data: any }>('/devices', {
+  createDevice: async (data: any, operationId?: string) => {
+    const opId = operationId || data.operationId || crypto.randomUUID();
+    const res = await request<{ success: boolean; message: string; data: any }>('/devices', {
       method: 'POST',
-      body: JSON.stringify({ ...data, operationId: operationId || crypto.randomUUID() })
-    }),
+      body: JSON.stringify({ ...data, operationId: opId })
+    });
+    if (res.success) invalidateRelatedDeviceCache(data);
+    return res;
+  },
 
-  updateDevice: (id: number | string, data: any, operationId?: string, expectedVersion?: number) =>
-    request<{ success: boolean; message: string; data: any }>(`/devices/${id}`, {
+  updateDevice: async (id: number | string, data: any, operationId?: string, expectedVersion?: number) => {
+    const opId = operationId || data.operationId || crypto.randomUUID();
+    const version = expectedVersion !== undefined ? expectedVersion : data.expectedVersion;
+    const payload = { ...data, operationId: opId };
+    if (version !== undefined) {
+      payload.expectedVersion = version;
+    }
+    const res = await request<{ success: boolean; message: string; data: any }>(`/devices/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ ...data, operationId: operationId || crypto.randomUUID(), expectedVersion })
-    }),
+      body: JSON.stringify(payload)
+    });
+    if (res.success) invalidateRelatedDeviceCache({ id, ...data });
+    return res;
+  },
 
-  deleteDevice: (id: number | string, operationId?: string) =>
-    request<{ success: boolean; message: string }>(`/devices/${id}`, {
+  deleteDevice: async (id: number | string, operationId?: string, deviceData?: any) => {
+    const res = await request<{ success: boolean; message: string }>(`/devices/${id}`, {
       method: 'DELETE',
       body: JSON.stringify({ operationId: operationId || crypto.randomUUID() })
-    }),
+    });
+    if (res.success) invalidateRelatedDeviceCache(deviceData || { id });
+    return res;
+  },
 
-  bulkUpdateDevices: (data: { device_ids: (number | string)[]; updates: any; reason?: string }) =>
-    request<{ success: boolean; message: string; updated_count: number }>('/devices/bulk-update', {
+  bulkUpdateDevices: async (data: { device_ids: (number | string)[]; updates: any; reason?: string }) => {
+    const res = await request<{ success: boolean; message: string; updated_count: number }>('/devices/bulk-update', {
       method: 'POST',
       body: JSON.stringify(data)
-    }),
+    });
+    // For bulk updates, we might need to invalidate all devices to be safe,
+    // or at least invalidate by specific substation/feeder if known.
+    // Let's invalidate the whole /devices? cache and stats.
+    if (res.success) {
+      invalidateCacheByPrefix('/devices?');
+      invalidateCacheByPrefix('/dashboard/stats');
+    }
+    return res;
+  },
 
   addDeviceImage: (deviceId: number | string, data: { image_url: string; caption?: string; is_primary?: boolean }) =>
     request<{ success: boolean; message: string; data: any[] }>(`/devices/${deviceId}/images`, {
@@ -671,11 +719,11 @@ export const api = {
   // Phase 4: Checklists (Mẫu kiểm tra)
   getChecklists: (params?: { search?: string; category?: string; target_device_type?: string }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: any[] }>(`/checklists${query ? '?' + query : ''}`);
+    return request<{ success: boolean; data: any[] }>(`/checklists${query ? '?' + query : ''}`, { cacheTtl: 21600 });
   },
 
   getChecklistPresets: () =>
-    request<{ success: boolean; data: any[] }>('/checklists/presets'),
+    request<{ success: boolean; data: any[] }>('/checklists/presets', { cacheTtl: 21600 }),
 
   syncEvnChecklists: () =>
     request<{ success: boolean; message: string }>('/checklists/sync-evn-templates', {

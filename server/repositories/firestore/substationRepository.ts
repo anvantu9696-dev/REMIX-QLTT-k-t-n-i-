@@ -36,8 +36,10 @@ export const substationRepo = {
     if (options?.status) {
       query = query.where('status', '==', options.status);
     }
-    if (options?.limit) {
-      query = query.limit(options.limit);
+    const limit = options?.limit || 500;
+    if (limit) {
+      query = query.limit(limit);
+      
     }
 
     const snapshot = await query.get();

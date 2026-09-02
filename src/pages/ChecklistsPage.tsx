@@ -383,6 +383,7 @@ export const ChecklistsPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           {activeTab === 'templates' ? (
             <>
+              {(hasRole('ADMIN') || hasRole('MANAGER')) && (
               <button
                 onClick={handleSyncEVNStandards}
                 disabled={syncingTemplates}
@@ -392,23 +393,28 @@ export const ChecklistsPage: React.FC = () => {
                 <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${syncingTemplates ? 'animate-spin' : ''}`} />
                 <span>{syncingTemplates ? 'Đang đồng bộ...' : 'Đồng bộ Mẫu Chuẩn EVN'}</span>
               </button>
+            )}
             </>
           ) : (
             <>
-              <button
-                onClick={handleGenerateTasksFromSchedules}
-                className="inline-flex items-center justify-center px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition space-x-1.5 cursor-pointer"
-              >
-                <Play className="w-3.5 h-3.5" />
-                <span>Sinh công việc ngay</span>
-              </button>
-              <button
-                onClick={() => setShowScheduleModal(true)}
-                className="inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition space-x-2 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Thêm lịch định kỳ</span>
-              </button>
+              {(hasRole('ADMIN') || hasRole('MANAGER')) && (
+                <>
+                  <button
+                    onClick={handleGenerateTasksFromSchedules}
+                    className="inline-flex items-center justify-center px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition space-x-1.5 cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Sinh công việc ngay</span>
+                  </button>
+                  <button
+                    onClick={() => setShowScheduleModal(true)}
+                    className="inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition space-x-2 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Thêm lịch định kỳ</span>
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -592,6 +598,7 @@ export const ChecklistsPage: React.FC = () => {
                       </button>
                     </div>
 
+                    {(hasRole('ADMIN') || hasRole('MANAGER')) && (
                     <div className="flex items-center space-x-1">
                       <button
                         onClick={() => handleEditChecklist(c)}
@@ -615,6 +622,7 @@ export const ChecklistsPage: React.FC = () => {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+                  )}
                   </div>
                 </div>
               ))}
@@ -645,7 +653,7 @@ export const ChecklistsPage: React.FC = () => {
             <div className="py-12 text-center text-slate-500 text-sm">Đang tải lịch kiểm tra định kỳ...</div>
           ) : (
             <div className="space-y-4">
-              {hasRole('ADMIN') && (
+              {(hasRole('ADMIN') || hasRole('MANAGER')) && (
                 <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer">
                   <input
                     type="checkbox"
@@ -693,7 +701,7 @@ export const ChecklistsPage: React.FC = () => {
                           </td>
                           <td className="p-3.5 text-right">
                             {s.status !== 'DELETED' ? (
-                              hasRole('ADMIN') && (
+                              (hasRole('ADMIN') || hasRole('MANAGER')) && (
                                 <button
                                   onClick={() => setDeletingSchedule(s)}
                                   className="p-1.5 text-slate-400 hover:text-red-600 rounded cursor-pointer"

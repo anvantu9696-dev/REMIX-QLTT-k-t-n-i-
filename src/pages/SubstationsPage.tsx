@@ -67,10 +67,23 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
     fetchSubstations();
   });
 
-  const fetchSubstations = async () => {
+
+  const handleRefreshData = async () => {
     setLoading(true);
     try {
-      const res = await api.getSubstations({ search, status: statusFilter });
+      const res = await api.getSubstations(undefined, { forceRefresh: true });
+      if (res.success) {
+        setSubstations(res.data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSubstations = async (options?: {forceRefresh?: boolean}) => {
+    setLoading(true);
+    try {
+      const res = await api.getSubstations({ search, status: statusFilter }, options);
       if (res.success) {
         setSubstations(res.data);
       }
@@ -211,7 +224,7 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
           </p>
         </div>
 
-        {!isGuest() && (hasRole('ADMIN') || hasRole('MANAGER')) && (
+        {!isGuest() && (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
           <button
             onClick={handleOpenAddModal}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm shrink-0"
@@ -417,7 +430,7 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
 
                 {!isGuest() && (
                   <div className="flex items-center gap-2">
-                    {((hasRole('ADMIN') || hasRole('MANAGER')) || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
+                    {((hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) || (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER')))) && (
                       <button
                         onClick={() => handleOpenEditModal(station)}
                         className="p-1.5 text-slate-600 hover:text-blue-600 rounded hover:bg-white transition-colors"
@@ -426,7 +439,7 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
                         <Edit2 className="w-4 h-4" />
                       </button>
                     )}
-                    {(hasRole('ADMIN') || (hasRole('ADMIN') || hasRole('MANAGER'))) && (
+                    {(hasRole('ADMIN') || (hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER')))) && (
                       <button
                         onClick={() => handleOpenDeleteModal(station)}
                         className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-white transition-colors"

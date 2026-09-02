@@ -52,7 +52,7 @@ interface MenuItem {
   label: string;
   icon: React.ReactNode;
   path: string;
-  rolesAllowed?: ('ADMIN' | 'MANAGER' | 'STAFF' | 'VIEWER')[];
+  rolesAllowed?: ('ADMIN' | 'MANAGER' | 'SHIFT_LEADER' | 'STAFF' | 'VIEWER')[];
   hideForGuest?: boolean;
 }
 
@@ -104,18 +104,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, path: '/' },
-    { id: 'gis-map', label: 'Bản đồ thiết bị', icon: <MapPin className="w-4 h-4" />, path: '/gis-map' },
-    { id: 'equipment', label: 'Thiết bị', icon: <Zap className="w-4 h-4" />, path: '/equipment', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
+    // { id: 'gis-map', label: 'Bản đồ thiết bị', icon: <MapPin className="w-4 h-4" />, path: '/gis-map' },
+    { id: 'equipment', label: 'Thiết bị', icon: <Zap className="w-4 h-4" />, path: '/equipment', rolesAllowed: ['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF'] },
     { id: 'stations', label: 'Trạm 110kV', icon: <Building2 className="w-4 h-4" />, path: '/stations' },
     { id: 'feeders', label: 'Phát tuyến', icon: <GitCommitHorizontal className="w-4 h-4" />, path: '/feeders' },
     { id: 'loops', label: 'Khép vòng', icon: <CircleDot className="w-4 h-4" />, path: '/loops' },
     { id: 'approvals', label: 'Phê duyệt', icon: <ShieldAlert className="w-4 h-4" />, path: '/approvals' },
-    { id: 'tasks', label: 'Công việc & Kiểm tra', icon: <Briefcase className="w-4 h-4" />, path: '/tasks', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
-    { id: 'my-proposals', label: 'Đề xuất của tôi', icon: <FileText className="w-4 h-4" />, path: '/my-proposals', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'tasks', label: 'Công việc & Kiểm tra', icon: <Briefcase className="w-4 h-4" />, path: '/tasks', rolesAllowed: ['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF'] },
+    { id: 'my-proposals', label: 'Đề xuất của tôi', icon: <FileText className="w-4 h-4" />, path: '/my-proposals', rolesAllowed: ['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF'] },
     { id: 'anomalies', label: 'Bất thường', icon: <AlertTriangle className="w-4 h-4" />, path: '/anomalies' },
-    { id: 'reports', label: 'Báo cáo', icon: <FileBarChart className="w-4 h-4" />, path: '/reports', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'reports', label: 'Báo cáo', icon: <FileBarChart className="w-4 h-4" />, path: '/reports', rolesAllowed: ['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF'] },
     { id: 'import', label: 'Import dữ liệu', icon: <Upload className="w-4 h-4" />, path: '/import', rolesAllowed: ['ADMIN'] },
-    { id: 'documents', label: 'Tài liệu', icon: <FileText className="w-4 h-4" />, path: '/documents', rolesAllowed: ['ADMIN', 'MANAGER', 'STAFF'] },
+    { id: 'documents', label: 'Tài liệu', icon: <FileText className="w-4 h-4" />, path: '/documents', rolesAllowed: ['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF'] },
     { id: 'users', label: 'Người dùng', icon: <Users className="w-4 h-4" />, path: '/users', rolesAllowed: ['ADMIN'] },
     { id: 'guides', label: 'Hướng dẫn', icon: <BookOpen className="w-4 h-4" />, path: '/guides' },
     { id: 'settings', label: 'Cài đặt', icon: <Settings className="w-4 h-4" />, path: '/settings' }
@@ -190,7 +190,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
             </div>
             {[
               { id: 'dashboard', label: 'Dashboard', path: '/' },
-              { id: 'gis-map', label: 'Bản đồ thiết bị', path: '/gis-map' }
+              // { id: 'gis-map', label: 'Bản đồ thiết bị', path: '/gis-map' }
             ].map(item => {
               const menuItem = visibleMenuItems.find(m => m.id === item.id);
               if (!menuItem) return null;

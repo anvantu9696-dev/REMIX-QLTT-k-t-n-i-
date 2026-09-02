@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, RoleCode } from '../types';
 import { api, setAuthToken } from '../lib/api';
+import { clearAllCache } from '../lib/idbCache';
 import { auth, db } from '../lib/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut, onIdTokenChanged } from 'firebase/auth';
 
@@ -25,7 +26,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
-      setIsLoading(true);
+      // Only set loading to true if we don't have a user yet (initial load)
+      // If we already have a user, we perform the sync in the background without clearing the UI.
+      if (!user) setIsLoading(true);
+
       if (firebaseUser) {
         try {
           const idToken = await firebaseUser.getIdToken();
@@ -37,7 +41,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             full_name: fullName,
             photoURL: firebaseUser.photoURL || ''
           });
-          
           
           if (res.success && res.user) {
              const data = res.user;
@@ -60,11 +63,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           } else {
              setUser(null);
              if (res.message) {
-                // Dispatch event to show error if needed, but for now just logout if forbidden
                 console.warn('Sync failed:', res.message);
                 if ( (res as any).errorType === 'USER_DISABLED' || (res as any).errorType === 'USER_LOCKED') {
                     await signOut(auth);
                     setAuthToken(null);
+                    clearAllCache();
                 }
              }
           }
@@ -117,7 +120,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const guestLogin = async () => { return { success: false, message: 'Not supported' }; };
+  const guestLogin = async () => {
+    try {
+      // Fetch credentials securely from the backend to avoid exposing in client code
+      const response = await api.getGuestConfig();
+      if (response.success && response.email && response.password) {
+        const userCredential = await signInWithEmailAndPassword(auth, response.email, response.password);
+        return { success: true, user: userCredential.user };
+      } else {
+        return { success: false, message: 'Đăng nhập khách không khả dụng.' };
+      }
+    } catch (error: any) {
+      console.error('Guest login failed:', error);
+      return { success: false, message: 'Đăng nhập khách không khả dụng. Vui lòng liên hệ quản trị viên.' };
+    }
+  };
 
   const logout = async () => {
     await signOut(auth);

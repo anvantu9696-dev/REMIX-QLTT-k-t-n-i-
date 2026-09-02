@@ -1,9 +1,6 @@
 import fetch from 'node-fetch';
-const token = process.env.TOKEN || 'put-token-here';
-async function run() {
-  const res = await fetch('http://0.0.0.0:3000/api/devices', {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  console.log(res.status, await res.text());
+async function test() {
+  const loginRes = await fetch('http://localhost:3000/api/auth/guest-config');
+  const loginData = await loginRes.json();
+  const token = "we need a firebase token"; 
 }
-run();

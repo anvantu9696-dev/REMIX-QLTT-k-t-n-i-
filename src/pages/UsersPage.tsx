@@ -222,6 +222,7 @@ export const UsersPage: React.FC = () => {
             <option value="">Tất cả vai trò</option>
             <option value="ADMIN">ADMIN</option>
             <option value="MANAGER">MANAGER</option>
+            <option value="SHIFT_LEADER">Trưởng ca vận hành</option>
             <option value="STAFF">STAFF</option>
             <option value="VIEWER">VIEWER</option>
           </select>
@@ -272,6 +273,7 @@ export const UsersPage: React.FC = () => {
                         >
                           <option value="ADMIN">ADMIN</option>
                           <option value="MANAGER">MANAGER</option>
+                          <option value="SHIFT_LEADER">Trưởng ca vận hành</option>
                           <option value="STAFF">STAFF</option>
                           <option value="VIEWER">VIEWER</option>
                         </select>

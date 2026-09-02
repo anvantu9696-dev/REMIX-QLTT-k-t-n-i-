@@ -1,5 +1,6 @@
 import { PendingGuard } from './components/PendingGuard';
 import React, { useState, useEffect } from 'react';
+import { clearAllCache } from './lib/idbCache';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AppLayout } from './components/layout/AppLayout';
@@ -14,7 +15,7 @@ import { SubstationsPage } from './pages/SubstationsPage';
 import { FeedersPage } from './pages/FeedersPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { DeviceDetailPage } from './pages/DeviceDetailPage';
-import { MapPage } from './pages/MapPage';
+// import { MapPage } from './pages/MapPage';
 import { LoopsPage } from './pages/LoopsPage';
 import { LoopDetailPage } from './pages/LoopDetailPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
@@ -40,6 +41,22 @@ function AppContent() {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Global shortcut to force refresh app (Ctrl+Shift+R)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault();
+        if (window.confirm('Bạn có muốn xóa toàn bộ bộ nhớ đệm (Cache) và tải lại trang?')) {
+          clearAllCache().then(() => {
+            window.location.reload();
+          });
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const navigateTo = (path: string) => {
@@ -138,12 +155,12 @@ function AppContent() {
           />
         );
       }
-      case '/gis-map':
-        return (
-          <MapPage
-            onNavigateToDetail={(id) => navigateTo(`/equipment/detail/${id}`)}
-          />
-        );
+      // case '/gis-map':
+      //   return (
+      //     <MapPage
+      //       onNavigateToDetail={(id) => navigateTo(`/equipment/detail/${id}`)}
+      //     />
+      //   );
       case '/loops':
         return <LoopsPage />;
       case '/dynamic-graph':
@@ -175,6 +192,10 @@ function AppContent() {
       </ErrorBoundary>
     </AppLayout>
   );
+}
+
+if (typeof window !== 'undefined') {
+  (window as any).clearGridCache = clearAllCache;
 }
 
 export default function App() {

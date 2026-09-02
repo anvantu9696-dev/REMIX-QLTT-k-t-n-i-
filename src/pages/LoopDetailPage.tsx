@@ -32,8 +32,12 @@ import { useAuth } from '../context/AuthContext';
 import { formatDateTime, formatDate } from '../utils/dateTime';
 
 export const LoopDetailPage: React.FC = () => {
-  const pathParts = window.location.pathname.split('/');
-  const id = pathParts[pathParts.length - 1];
+  // Robustly extract ID
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const id = pathParts[pathParts.length - 1] === 'loops' ? null : pathParts[pathParts.length - 1];
+  
+  console.log('[LoopDetailPage] Parsed ID from URL:', { pathname: window.location.pathname, id });
+
   const navigate = (path: string) => {
     window.history.pushState({}, '', path);
     window.dispatchEvent(new Event('popstate'));
@@ -84,9 +88,12 @@ export const LoopDetailPage: React.FC = () => {
           setSelectedVersionId(res.data.active_version.id);
         }
         setIsDirty(false);
+      } else {
+        alert((res as any).message || 'Không tìm thấy mạch Khép vòng');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading loop detail:', err);
+      alert(err.message || 'Không tìm thấy mạch Khép vòng');
     } finally {
       setLoading(false);
     }
@@ -200,7 +207,12 @@ export const LoopDetailPage: React.FC = () => {
   }
 
   if (!loop) {
-    return <div className="text-center py-20 text-slate-500 text-xs">Không tìm thấy mạch Khép vòng</div>;
+    return (
+      <div className="text-center py-20 text-slate-500 text-xs space-y-4">
+        <div>Không tìm thấy mạch Khép vòng</div>
+        <button onClick={() => fetchLoopDetail()} className="px-4 py-2 bg-slate-800 text-white rounded-lg">Thử lại</button>
+      </div>
+    );
   }
 
   return (
@@ -259,7 +271,7 @@ export const LoopDetailPage: React.FC = () => {
           </button>
 
           {/* Save & Submit Actions */}
-          {(hasRole('ADMIN') || hasRole('MANAGER')) && (
+          {(hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
             <>
               <button
                 onClick={() => handleSaveTopology(false)}
@@ -321,7 +333,7 @@ export const LoopDetailPage: React.FC = () => {
             nodes={nodes}
             edges={edges}
             onChange={handleTopologyChange}
-            readOnly={!(hasRole('ADMIN') || hasRole('MANAGER'))}
+            readOnly={!(hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER')))}
             loop={loop}
             onEditLoop={() => navigate('/loops')}
           />
@@ -581,7 +593,7 @@ export const LoopDetailPage: React.FC = () => {
                     >
                       Xem
                     </button>
-                    {(hasRole('ADMIN') || hasRole('MANAGER')) && (
+                    {(hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
                       <button
                         onClick={() => handleRestoreVersion(v)}
                         className="px-2.5 py-1 bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 font-bold rounded text-[11px]"
