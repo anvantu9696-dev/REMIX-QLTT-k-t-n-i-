@@ -99,10 +99,22 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
 
   const fetchSubstationsList = async (options?: {forceRefresh?: boolean}) => {
     try {
-      const res = await api.getSubstations(undefined, options);
-      if (res.success) {
-        setSubstations(res.data);
+      let allSubs: Substation[] = [];
+      let lastDocId: string | undefined = undefined;
+      while (true) {
+        const res = await api.getSubstations({ limit: 100, lastDocId }, options);
+        if (res.success && res.data.length > 0) {
+          allSubs = [...allSubs, ...res.data];
+          if (res.nextCursor) {
+            lastDocId = res.nextCursor;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
       }
+      setSubstations(allSubs);
     } catch (e) {
       console.error(e);
     }

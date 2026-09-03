@@ -22,17 +22,16 @@ router.get('/', authenticateToken, validatePayload, async (req: AuthenticatedReq
     const { search, substation_id, status, sortBy, sortOrder, limit, lastDocId } = req.query;
 
     
-        const [feeders, substations] = await Promise.all([
-          feederRepo.list({
+        const feeders = await feederRepo.list({
             substation_id: substation_id ? (substation_id as string) : undefined,
             status: status ? (status as string) : undefined,
             limit: Number(limit) || 10,
             lastDocId: lastDocId ? (lastDocId as string) : undefined
-          }),
-          substationRepo.list()
-        ]);
+        });
         
-        const subMap = new Map(substations.map(s => [String(s.id), s]));
+        const subIdsToFetch = Array.from(new Set(feeders.map(f => String(f.substation_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
+        const substations = await Promise.all(subIdsToFetch.map(id => substationRepo.getById(id)));
+        const subMap = new Map(substations.filter(s => s).map(s => [String(s!.id), s]));
         let enrichedFeeders = await Promise.all(feeders.map(async f => {
             const sub = subMap.get(String(f.substation_id));
             const dCount = await deviceRepo.count({ feeder_id: f.id });
@@ -230,8 +229,9 @@ router.delete(
       if (!operationId) return res.status(400).json({ success: false, code: 'OPERATION_ID_REQUIRED' });
 
       
-          // Verify devices dependency (simplified for this cutover)
-          // ... need to verify active devices
+          // Verify devices dependency
+          const deviceCount = await deviceRepo.count({ feeder_id: id });
+          if (deviceCount > 0) return res.status(409).json({ success: false, code: 'FEEDER_HAS_ACTIVE_DEVICES', message: 'Phát tuyến đang có thiết bị hoạt động.' });
           
           try {
               const deleted = await feederRepo.delete(id, operationId);

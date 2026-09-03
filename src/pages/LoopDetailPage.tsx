@@ -74,7 +74,24 @@ export const LoopDetailPage: React.FC = () => {
 
   const fetchLoopDetail = async (versionId?: number | string) => {
     if (!id) return;
+    
     setLoading(true);
+
+    // Auto redirect if id is '0'
+    if (id === '0') {
+      try {
+        const listRes = await api.getLoops({});
+        if (listRes.success && listRes.data && listRes.data.length > 0) {
+           navigate(`/loops/${listRes.data[0].id}`);
+           return; // Do not setLoading(false) here to avoid flashing error before unmount
+        }
+      } catch (e) {
+        console.error('Failed to fetch loops for redirect', e);
+      }
+      setLoading(false);
+      return;
+    }
+    
     try {
       const res = await api.getLoop(id, versionId);
       if (res.success) {
@@ -88,13 +105,28 @@ export const LoopDetailPage: React.FC = () => {
           setSelectedVersionId(res.data.active_version.id);
         }
         setIsDirty(false);
+        setLoading(false);
       } else {
-        alert((res as any).message || 'Không tìm thấy mạch Khép vòng');
+        // Fallback fetch list if not found
+        try {
+          const listRes = await api.getLoops({});
+          if (listRes.success && listRes.data && listRes.data.length > 0) {
+             navigate(`/loops/${listRes.data[0].id}`);
+             return;
+          }
+        } catch (e) {}
+        setLoading(false);
       }
     } catch (err: any) {
       console.error('Error loading loop detail:', err);
-      alert(err.message || 'Không tìm thấy mạch Khép vòng');
-    } finally {
+      // Fallback fetch list if not found
+      try {
+        const listRes = await api.getLoops({});
+        if (listRes.success && listRes.data && listRes.data.length > 0) {
+           navigate(`/loops/${listRes.data[0].id}`);
+           return;
+        }
+      } catch (e) {}
       setLoading(false);
     }
   };
@@ -203,7 +235,11 @@ export const LoopDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="text-center py-20 text-slate-500 text-xs">Đang tải sơ đồ Topology khép vòng...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
   if (!loop) {

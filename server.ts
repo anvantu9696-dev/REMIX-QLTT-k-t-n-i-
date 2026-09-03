@@ -23,6 +23,7 @@ import checklistRoutes from './server/routes/checklists';
 import scheduleRoutes from './server/routes/schedules';
 import issueRoutes from './server/routes/issues';
 import importRoutes from './server/routes/import';
+import migrateRoutes from './server/routes/migrate';
 import reportRoutes from './server/routes/reports';
 import proposalRoutes from './server/routes/proposals';
 import systemRoutes from './server/routes/system';
@@ -40,6 +41,8 @@ async function startServer() {
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));
+
+
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Request ID Middleware
@@ -76,6 +79,7 @@ async function startServer() {
   app.use('/api/schedules', scheduleRoutes);
   app.use('/api/issues', issueRoutes);
   app.use('/api/import', importRoutes);
+app.use('/api', migrateRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/proposals', proposalRoutes);
   app.use('/api/system', systemRoutes);

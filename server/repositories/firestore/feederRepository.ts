@@ -1,6 +1,6 @@
 import { getTargetFirestore } from '../../firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit } from '../../utils/firestoreCache';
+import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit, getOrFetchCached } from '../../utils/firestoreCache';
 
 export type Feeder = {
   id: string;
@@ -39,12 +39,7 @@ export const feederRepo = {
     let query: FirebaseFirestore.Query = db.collection('feeders').where('isDeleted', '==', false);
 
     if (subId) {
-      const numSubId = Number(subId);
-      if (!isNaN(numSubId) && String(numSubId) === subId) {
-        query = query.where('substation_id', 'in', [subId, numSubId]);
-      } else {
-        query = query.where('substation_id', '==', subId);
-      }
+      query = query.where('substation_id', '==', String(subId));
     }
     if (options?.status) {
       query = query.where('status', '==', options.status);
@@ -57,7 +52,7 @@ export const feederRepo = {
       }
     }
 
-    const limit = options?.limit || 500;
+    const limit = options?.limit || 50;
     if (limit) {
       query = query.limit(limit);
       
@@ -68,7 +63,7 @@ export const feederRepo = {
     logFirebaseRead('feeders', queryDesc, snapshot.size);
     const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Feeder[];
 
-    setCached(cacheKey, list, 60000);
+    setCached(cacheKey, list, 300000);
     return list;
   },
 
@@ -90,39 +85,26 @@ export const feederRepo = {
     let query = db.collection('feeders').where('isDeleted', '==', false);
 
     if (subId) {
-      const numSubId = Number(subId);
-      if (!isNaN(numSubId) && String(numSubId) === subId) {
-        query = query.where('substation_id', 'in', [subId, numSubId]);
-      } else {
-        query = query.where('substation_id', '==', subId);
-      }
+      query = query.where('substation_id', '==', String(subId));
     }
 
     const snap = await query.count().get();
     const count = snap.data().count;
     logFirebaseRead('feeders', subId ? `count(substation_id=${subId})` : 'count(isDeleted=false)', count);
-    setCached(cacheKey, count, 60000);
+    setCached(cacheKey, count, 300000);
     return count;
   },
   
   async getById(id: string) {
     const cacheKey = `feeder_doc_${id}`;
-    const cached = getCached<Feeder>(cacheKey);
-    if (cached) {
-      logCacheHit('feeder', cacheKey);
-      return cached;
-    }
-
-    const db = getTargetFirestore();
-    const doc = await db.collection('feeders').doc(id).get();
-    logFirebaseRead('feeders', `doc(${id})`, doc.exists ? 1 : 0);
-    
-    if (!doc.exists || doc.data()?.isDeleted === true) return null;
-
-    const data = { id: doc.id, ...doc.data() } as Feeder;
-    setCached(cacheKey, data, 60000);
-    return data;
-  },
+    return getOrFetchCached(cacheKey, 300000, async () => {
+        const db = getTargetFirestore();
+        const doc = await db.collection('feeders').doc(id).get();
+        logFirebaseRead('feeders', `doc(${id})`, doc.exists ? 1 : 0);
+        if (!doc.exists || doc.data()?.isDeleted) return null;
+        const data = { id: doc.id, ...doc.data() };
+        return data as any;
+    });  },
 
   async findByCode(code: string) {
       const db = getTargetFirestore();

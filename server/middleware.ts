@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { getTargetFirestore, getTargetAuth } from './firebaseAdmin.js';
+import { getCached, setCached, logCacheHit } from './utils/firestoreCache';
 import { auditLogRepo } from './repositories/firestore/auditLogRepository.js';
 
 export interface AuthenticatedUser {
@@ -24,6 +25,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+
   if (!token) {
      return res.status(401).json({ success: false, errorType: 'TOKEN_INVALID', message: 'Yêu cầu đăng nhập để truy cập hệ thống' });
   }
@@ -40,14 +42,23 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     
     const db = getTargetFirestore();
     const uid = decodedToken.uid;
-    const doc = await db.collection('users').doc(uid).get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ success: false, errorType: 'PROFILE_NOT_FOUND', message: 'Không tìm thấy hồ sơ người dùng.' });
+    
+    const cacheKey = `user_profile_${uid}`;
+    let userRow: any;
+    const cachedUser = getCached(cacheKey);
+    
+    if (cachedUser) {
+        // logCacheHit('users', cacheKey);
+        userRow = cachedUser;
+    } else {
+        const doc = await db.collection('users').doc(uid).get();
+        if (!doc.exists) {
+            return res.status(404).json({ success: false, errorType: 'PROFILE_NOT_FOUND', message: 'Không tìm thấy hồ sơ người dùng.' });
+        }
+        userRow = doc.data();
+        userRow.id = doc.id;
+        setCached(cacheKey, userRow, 60000); // 60 seconds TTL
     }
-
-    const userRow = doc.data() as any;
-    userRow.id = doc.id;
 
     if (userRow.status === 'PENDING') {
       return res.status(403).json({ success: false, errorType: 'USER_PENDING', message: 'Tài khoản đang chờ duyệt.' });

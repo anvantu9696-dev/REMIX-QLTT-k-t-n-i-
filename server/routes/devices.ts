@@ -62,6 +62,24 @@ router.post(
 );
 
 // 2. Get List of Devices with Search & Multi-Filters
+
+// Check device ID uniqueness
+router.get('/check-device-id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { device_id, excludeId } = req.query;
+    if (!device_id) return res.json({ success: true, exists: false, message: 'Missing device_id' });
+    
+    const existingDevice = await deviceRepo.getByDeviceId(device_id as string);
+    if (existingDevice && existingDevice.id !== excludeId) {
+      return res.json({ success: true, exists: true, device: { name: existingDevice.name } });
+    }
+    
+    return res.json({ success: true, exists: false });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 router.get('/', authenticateToken, validatePayload, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const {
@@ -81,30 +99,34 @@ router.get('/', authenticateToken, validatePayload, async (req: AuthenticatedReq
     const limit = Number(req.query.limit) || 10;
 
     
-        const [devices, substations, feeders] = await Promise.all([
-            deviceRepo.list({
-            limit: Number(req.query.limit) || 10,
+        const devices = await deviceRepo.list({
+              limit: Number(req.query.limit) || 10,
               substation_id: substation_id ? (substation_id as string) : undefined,
               feeder_id: feeder_id ? (feeder_id as string) : undefined,
               device_type: device_type ? (device_type as string) : undefined,
               status: status ? (status as string) : undefined,
               lastDocId: lastDocId ? (lastDocId as string) : undefined
-            }),
-            substationRepo.list({ limit: 100 }),
-            feederRepo.list({ limit: 100 })
-        ]);
-        const subMap = new Map(substations.map(s => [String(s.id), s]));
-        const feederMap = new Map(feeders.map(f => [String(f.id), f]));
+        });
+
+        // Lấy danh sách ID trạm/phát tuyến CẦN FETCH (nếu document chưa được chuẩn hóa)
+        const subIdsToFetch = Array.from(new Set(devices.filter(d => !d.substation_name).map(d => String(d.substation_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
+        const feederIdsToFetch = Array.from(new Set(devices.filter(d => !d.feeder_name).map(d => String(d.feeder_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
+        
+        const substations = await Promise.all(subIdsToFetch.map(id => substationRepo.getById(id)));
+        const feeders = await Promise.all(feederIdsToFetch.map(id => feederRepo.getById(id)));
+        
+        const subMap = new Map(substations.filter(s => s).map(s => [String(s!.id), s]));
+        const feederMap = new Map(feeders.filter(f => f).map(f => [String(f!.id), f]));
 
         let enrichedDevices = devices.map(d => {
             const sub = subMap.get(String(d.substation_id));
             const feeder = feederMap.get(String(d.feeder_id));
             return {
                 ...d,
-                substation_name: sub ? sub.name : null,
-                substation_code: sub ? sub.substation_code : null,
-                feeder_name: feeder ? feeder.name : null,
-                feeder_code: feeder ? feeder.feeder_code : null,
+                substation_name: d.substation_name || (sub ? sub.name : null),
+                substation_code: d.substation_code || (sub ? sub.substation_code : null),
+                feeder_name: d.feeder_name || (feeder ? feeder.name : null),
+                feeder_code: d.feeder_code || (feeder ? feeder.feeder_code : null),
                 device_type: d.device_type === 'RCL' ? 'REC' : d.device_type
             };
         });
@@ -227,6 +249,7 @@ router.post(
               latitude: latitude ? parseFloat(latitude) : undefined,
               longitude: longitude ? parseFloat(longitude) : undefined,
               google_maps_url: req.body.google_maps_url,
+              primary_image: req.body.primary_image !== undefined ? req.body.primary_image : undefined,
               pole_number: req.body.pole_number,
               switch_status: req.body.switch_status,
               scada_status: req.body.scada_status,
@@ -286,6 +309,16 @@ router.put(
           const device = await deviceRepo.getById(id);
           if (!device) return res.status(404).json({ success: false, message: 'Thiết bị không tồn tại' });
 
+          const targetSubId = substation_id || device.substation_id;
+          const targetFeederId = feeder_id || device.feeder_id;
+          
+          if (targetSubId && targetFeederId) {
+             const feeder = await feederRepo.getById(targetFeederId.toString());
+             if (feeder && String((feeder as any).substation_id) !== String(targetSubId)) {
+                 return res.status(400).json({ success: false, code: 'FEEDER_SUBSTATION_MISMATCH', message: 'Phát tuyến không thuộc trạm này' });
+             }
+          }
+
           try {
               const updated = await deviceRepo.update(id, {
                   substation_id: substation_id ? (isNaN(Number(substation_id)) ? substation_id : Number(substation_id)) : device.substation_id,
@@ -299,6 +332,7 @@ router.put(
                   latitude: latitude ? parseFloat(latitude) : device.latitude,
                   longitude: longitude ? parseFloat(longitude) : device.longitude,
                   google_maps_url: req.body.google_maps_url !== undefined ? req.body.google_maps_url : device.google_maps_url,
+                  primary_image: req.body.primary_image !== undefined ? req.body.primary_image : device.primary_image,
                   pole_number: req.body.pole_number !== undefined ? req.body.pole_number : device.pole_number,
                   switch_status: req.body.switch_status || device.switch_status,
                   scada_status: req.body.scada_status || device.scada_status,

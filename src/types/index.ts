@@ -221,6 +221,7 @@ export interface Device {
   notes?: string;
   current_setting?: string;
   primary_image?: string;
+  version?: number;
   created_at: string;
   updated_at: string;
   created_by?: string;

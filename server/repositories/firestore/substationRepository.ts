@@ -1,6 +1,6 @@
 import { getTargetFirestore } from '../../firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit } from '../../utils/firestoreCache';
+import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit, getOrFetchCached } from '../../utils/firestoreCache';
 
 export type Substation = {
   id: string;
@@ -22,8 +22,9 @@ export type SubstationCreateInput = Omit<Substation, 'id' | 'version' | 'created
 const CACHE_KEY_ALL = 'substations_list_all';
 
 export const substationRepo = {
-  async list(options?: { status?: string; limit?: number }) {
-    const cacheKey = options?.status ? `substations_list_${options.status}` : CACHE_KEY_ALL;
+  async list(options?: { status?: string; limit?: number; lastDocId?: string }) {
+    const limit = options?.limit || 50;
+    const cacheKey = `substations_list_${options?.status || 'all'}_${limit}_${options?.lastDocId || 'none'}`;
     const cached = getCached<Substation[]>(cacheKey);
     if (cached) {
       logCacheHit('substations', cacheKey);
@@ -36,17 +37,23 @@ export const substationRepo = {
     if (options?.status) {
       query = query.where('status', '==', options.status);
     }
-    const limit = options?.limit || 500;
+    
+    if (options?.lastDocId) {
+      const lastDoc = await db.collection('substations').doc(options.lastDocId).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+
     if (limit) {
       query = query.limit(limit);
-      
     }
 
     const snapshot = await query.get();
-    logFirebaseRead('substations', options?.status ? `status=${options.status}` : 'isDeleted=false', snapshot.size);
+    logFirebaseRead('substations', `status=${options?.status || 'any'},limit=${limit}`, snapshot.size);
     const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Substation[];
     
-    setCached(cacheKey, list, 60000);
+    setCached(cacheKey, list, 300000);
     return list;
   },
 
@@ -62,28 +69,20 @@ export const substationRepo = {
     const count = snap.data().count;
     logFirebaseRead('substations', 'count(isDeleted=false)', count);
     
-    setCached('substations_count', count, 60000);
+    setCached('substations_count', count, 300000);
     return count;
   },
   
   async getById(id: string) {
     const cacheKey = `substation_doc_${id}`;
-    const cached = getCached<Substation>(cacheKey);
-    if (cached) {
-      logCacheHit('substation', cacheKey);
-      return cached;
-    }
-
-    const db = getTargetFirestore();
-    const doc = await db.collection('substations').doc(id).get();
-    logFirebaseRead('substations', `doc(${id})`, doc.exists ? 1 : 0);
-    
-    if (!doc.exists || doc.data()?.isDeleted === true) return null;
-
-    const data = { id: doc.id, ...doc.data() } as Substation;
-    setCached(cacheKey, data, 60000);
-    return data;
-  },
+    return getOrFetchCached(cacheKey, 300000, async () => {
+        const db = getTargetFirestore();
+        const doc = await db.collection('substations').doc(id).get();
+        logFirebaseRead('substations', `doc(${id})`, doc.exists ? 1 : 0);
+        if (!doc.exists || doc.data()?.isDeleted) return null;
+        const data = { id: doc.id, ...doc.data() };
+        return data as any;
+    });  },
 
   async findByCode(code: string) {
     const db = getTargetFirestore();

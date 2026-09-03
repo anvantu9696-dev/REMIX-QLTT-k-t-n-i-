@@ -1,6 +1,6 @@
 import { getTargetFirestore } from '../../firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit } from '../../utils/firestoreCache';
+import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit, getOrFetchCached } from '../../utils/firestoreCache';
 
 export type Device = {
   id: string;
@@ -8,6 +8,10 @@ export type Device = {
   name: string;
   substation_id: string | number;
   feeder_id: string | number;
+  substation_name?: string;
+  feeder_name?: string;
+  substation_code?: string;
+  feeder_code?: string;
   device_type: string;
   status: string;
   version: number;
@@ -17,6 +21,8 @@ export type Device = {
   lastOperationId?: string;
   latitude?: number;
   longitude?: number;
+  google_maps_url?: string;
+  primary_image?: string;
   address?: string;
   manufacturer?: string;
   installation_date?: string;
@@ -51,7 +57,7 @@ export const deviceRepo = {
     const feedId = options?.feeder_id !== undefined ? String(options.feeder_id) : undefined;
     const type = options?.device_type;
     const st = options?.status;
-    const limit = options?.limit || 10;
+    const limit = options?.limit || 50;
     const lastDocId = options?.lastDocId;
 
     const cacheKey = `devices_list_${subId || 'all'}_${feedId || 'all'}_${type || 'all'}_${st || 'all'}_${limit || 'all'}_${lastDocId || 'none'}`;
@@ -103,7 +109,7 @@ export const deviceRepo = {
     logFirebaseRead('devices', queryDesc, snapshot.size);
 
     const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Device[];
-    setCached(cacheKey, list, 30000); 
+    setCached(cacheKey, list, 300000); 
     return list;
   },
 
@@ -149,28 +155,20 @@ export const deviceRepo = {
     const snap = await query.count().get();
     const count = snap.data().count;
     logFirebaseRead('devices', `count(${subId || 'all'}, ${feedId || 'all'})`, count);
-    setCached(cacheKey, count, 30000);
+    setCached(cacheKey, count, 300000);
     return count;
   },
   
   async getById(id: string) {
     const cacheKey = `device_doc_${id}`;
-    const cached = getCached<Device>(cacheKey);
-    if (cached) {
-      logCacheHit('device', cacheKey);
-      return cached;
-    }
-
-    const db = getTargetFirestore();
-    const doc = await db.collection('devices').doc(id).get();
-    logFirebaseRead('devices', `doc(${id})`, doc.exists ? 1 : 0);
-    
-    if (!doc.exists || doc.data()?.isDeleted === true) return null;
-
-    const data = { id: doc.id, ...doc.data() } as Device;
-    setCached(cacheKey, data, 30000);
-    return data;
-  },
+    return getOrFetchCached(cacheKey, 300000, async () => {
+        const db = getTargetFirestore();
+        const doc = await db.collection('devices').doc(id).get();
+        logFirebaseRead('devices', `doc(${id})`, doc.exists ? 1 : 0);
+        if (!doc.exists || doc.data()?.isDeleted) return null;
+        const data = { id: doc.id, ...doc.data() };
+        return data as any;
+    });  },
 
   async getByDeviceId(deviceId: string) {
     const db = getTargetFirestore();
@@ -195,8 +193,29 @@ export const deviceRepo = {
         const docRef = db.collection('devices').doc();
         const now = FieldValue.serverTimestamp();
         
+        let substation_name = data.substation_name;
+        if (data.substation_id && !substation_name) {
+            const subDoc = await transaction.get(db.collection('substations').doc(String(data.substation_id)));
+            if (subDoc.exists) {
+                substation_name = subDoc.data()?.name;
+                data.substation_code = subDoc.data()?.substation_code;
+            }
+        }
+        let feeder_name = data.feeder_name;
+        if (data.feeder_id && !feeder_name) {
+            const fdDoc = await transaction.get(db.collection('feeders').doc(String(data.feeder_id)));
+            if (fdDoc.exists) {
+                feeder_name = fdDoc.data()?.name;
+                data.feeder_code = fdDoc.data()?.feeder_code;
+            }
+        }
+
         const docData = {
             ...data,
+            substation_name,
+            substation_code: data.substation_code,
+            feeder_name,
+            feeder_code: data.feeder_code,
             version: 1,
             createdAt: now,
             updatedAt: now,
@@ -228,9 +247,33 @@ export const deviceRepo = {
         if (currentData.lastOperationId === operationId) return currentData;
 
         const now = FieldValue.serverTimestamp();
+        let substation_name = data.substation_name !== undefined ? data.substation_name : currentData.substation_name;
+        if (data.substation_id !== undefined && String(data.substation_id) !== String(currentData.substation_id)) {
+            const subDoc = await transaction.get(db.collection('substations').doc(String(data.substation_id)));
+            if (subDoc.exists) {
+                substation_name = subDoc.data()?.name;
+                data.substation_code = subDoc.data()?.substation_code;
+            }
+            else substation_name = undefined;
+        }
+        
+        let feeder_name = data.feeder_name !== undefined ? data.feeder_name : currentData.feeder_name;
+        if (data.feeder_id !== undefined && String(data.feeder_id) !== String(currentData.feeder_id)) {
+            const fdDoc = await transaction.get(db.collection('feeders').doc(String(data.feeder_id)));
+            if (fdDoc.exists) {
+                feeder_name = fdDoc.data()?.name;
+                data.feeder_code = fdDoc.data()?.feeder_code;
+            }
+            else feeder_name = undefined;
+        }
+
         const updateData = {
             ...currentData,
             ...data,
+            substation_name,
+            substation_code: data.substation_code !== undefined ? data.substation_code : currentData.substation_code,
+            feeder_name,
+            feeder_code: data.feeder_code !== undefined ? data.feeder_code : currentData.feeder_code,
             version: currentData.version + 1,
             updatedAt: now,
             lastOperationId: operationId

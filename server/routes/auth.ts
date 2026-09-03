@@ -132,4 +132,13 @@ router.get('/guest-config', (req, res) => {
   return res.json({ success: true, email, password });
 });
 
+
+router.post('/logout', authenticateToken, (req: AuthenticatedRequest, res) => {
+  if (req.user && req.user.id) {
+    const { invalidateCache } = require('../utils/firestoreCache');
+    invalidateCache(`user_profile_${req.user.id}`);
+  }
+  return res.json({ success: true, message: 'Đăng xuất thành công' });
+});
+
 export default router;

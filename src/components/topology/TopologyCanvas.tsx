@@ -170,229 +170,15 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
   );
 
   // Auto initialize standard 7-node chain if nodes are empty and loop is provided
-  const buildStandard7NodeTopology = useCallback((currentLoop: Loop) => {
-    const startY = 220;
-    const standardNodes: TopologyNode[] = [];
-    const standardEdges: TopologyEdge[] = [];
+  
 
-    // Helper to build device placeholder
-    const makeDevice = (
-      id: number,
-      deviceId: string,
-      name: string,
-      code: string,
-      type: string,
-      swStatus: SwitchStatus,
-      extra?: Partial<Device>
-    ): Device => ({
-      id,
-      device_id: deviceId,
-      device_code: code,
-      name,
-      device_type: type as any,
-      unit: extra?.unit || 'EVN',
-      team: extra?.team || 'Đội QLVH',
-      status: 'ACTIVE',
-      switch_status: swStatus,
-      scada_status: 'SIGNAL',
-      relay_79: 'ON',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      ...extra
-    });
-
-    // 1. Station A (Trạm 110kV A)
-    const stAId = `STA_${currentLoop.substation_id_a || 'A'}`;
-    standardNodes.push({
-      device_id: stAId,
-      pos_x: 60,
-      pos_y: startY,
-      device: makeDevice(
-        currentLoop.substation_id_a || 1,
-        stAId,
-        currentLoop.substation_name_a || 'Trạm 110kV A',
-        currentLoop.substation_code_a || 'TBA-110kV-A',
-        'SUBSTATION',
-        'CLOSED',
-        { substation_code: currentLoop.substation_code_a || 'TBA-A' }
-      )
-    });
-
-    // 2. Feeder A (Phát tuyến A)
-    const fAId = `FDA_${currentLoop.feeder_id_a || 'A'}`;
-    standardNodes.push({
-      device_id: fAId,
-      pos_x: 350,
-      pos_y: startY,
-      device: makeDevice(
-        currentLoop.feeder_id_a || 1,
-        fAId,
-        currentLoop.feeder_name_a || `Phát tuyến ${currentLoop.feeder_code_a || 'A'}`,
-        currentLoop.feeder_code_a || 'PT-22kV-A',
-        'FEEDER',
-        'CLOSED',
-        {
-          feeder_code: currentLoop.feeder_code_a || 'PT-A',
-          substation_code: currentLoop.substation_code_a || 'TBA-A'
-        }
-      )
-    });
-
-    // 3. Device A (Thiết bị đầu A)
-    const devAId = String(currentLoop.device_id_a || 'DEV_A');
-    const swA: SwitchStatus = (currentLoop.switch_status_a as SwitchStatus) || 'CLOSED';
-    standardNodes.push({
-      device_id: devAId,
-      pos_x: 640,
-      pos_y: startY,
-      device: makeDevice(
-        101,
-        devAId,
-        currentLoop.device_name_a || `Thiết bị A (${devAId})`,
-        currentLoop.device_code_a || devAId,
-        currentLoop.device_type_a || 'LBS',
-        swA,
-        {
-          feeder_code: currentLoop.feeder_code_a || 'PT-A',
-          substation_code: currentLoop.substation_code_a || 'TBA-A'
-        }
-      )
-    });
-
-    // 4. Main Loop Device (Thiết bị Khép vòng chính - Trung tâm)
-    const loopDevId = String(currentLoop.loop_device_id || currentLoop.loop_device_code || 'DEV_LOOP_MAIN');
-    const isLoopClosed = (currentLoop.operation_status || currentLoop.status) === 'CLOSED';
-    standardNodes.push({
-      device_id: loopDevId,
-      pos_x: 960,
-      pos_y: startY - 25,
-      device: makeDevice(
-        100,
-        loopDevId,
-        currentLoop.loop_device_name || `TB Khép Vòng (${loopDevId})`,
-        currentLoop.loop_device_code || loopDevId,
-        currentLoop.loop_device_type || 'LBS',
-        isLoopClosed ? 'CLOSED' : 'OPEN',
-        {
-          pole_number: currentLoop.loop_device_pole,
-          team: currentLoop.loop_device_team || currentLoop.loop_device_unit || 'Đội QLVH',
-          unit: currentLoop.loop_device_unit || 'EVN',
-          latitude: currentLoop.latitude || currentLoop.loop_device_latitude,
-          longitude: currentLoop.longitude || currentLoop.loop_device_longitude,
-          google_maps_url: currentLoop.google_maps_url || currentLoop.loop_device_maps_url
-        }
-      )
-    });
-
-    // 5. Device B (Thiết bị đầu B)
-    const devBId = String(currentLoop.device_id_b || 'DEV_B');
-    const swB: SwitchStatus = (currentLoop.switch_status_b as SwitchStatus) || 'CLOSED';
-    standardNodes.push({
-      device_id: devBId,
-      pos_x: 1320,
-      pos_y: startY,
-      device: makeDevice(
-        102,
-        devBId,
-        currentLoop.device_name_b || `Thiết bị B (${devBId})`,
-        currentLoop.device_code_b || devBId,
-        currentLoop.device_type_b || 'LBS',
-        swB,
-        {
-          feeder_code: currentLoop.feeder_code_b || 'PT-B',
-          substation_code: currentLoop.substation_code_b || 'TBA-B'
-        }
-      )
-    });
-
-    // 6. Feeder B (Phát tuyến B)
-    const fBId = `FDB_${currentLoop.feeder_id_b || 'B'}`;
-    standardNodes.push({
-      device_id: fBId,
-      pos_x: 1610,
-      pos_y: startY,
-      device: makeDevice(
-        currentLoop.feeder_id_b || 2,
-        fBId,
-        currentLoop.feeder_name_b || `Phát tuyến ${currentLoop.feeder_code_b || 'B'}`,
-        currentLoop.feeder_code_b || 'PT-22kV-B',
-        'FEEDER',
-        'CLOSED',
-        {
-          feeder_code: currentLoop.feeder_code_b || 'PT-B',
-          substation_code: currentLoop.substation_code_b || 'TBA-B'
-        }
-      )
-    });
-
-    // 7. Station B (Trạm 110kV B)
-    const stBId = `STB_${currentLoop.substation_id_b || 'B'}`;
-    standardNodes.push({
-      device_id: stBId,
-      pos_x: 1900,
-      pos_y: startY,
-      device: makeDevice(
-        currentLoop.substation_id_b || 2,
-        stBId,
-        currentLoop.substation_name_b || 'Trạm 110kV B',
-        currentLoop.substation_code_b || 'TBA-110kV-B',
-        'SUBSTATION',
-        'CLOSED',
-        { substation_code: currentLoop.substation_code_b || 'TBA-B' }
-      )
-    });
-
-    // Standard Edges: StA -> FeederA -> DevA -> LoopDev -> DevB -> FeederB -> StB
-    standardEdges.push({
-      source_device_id: stAId,
-      target_device_id: fAId,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    });
-    standardEdges.push({
-      source_device_id: fAId,
-      target_device_id: devAId,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    });
-    standardEdges.push({
-      source_device_id: devAId,
-      target_device_id: loopDevId,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    });
-    standardEdges.push({
-      source_device_id: loopDevId,
-      target_device_id: devBId,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    });
-    standardEdges.push({
-      source_device_id: devBId,
-      target_device_id: fBId,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    });
-    standardEdges.push({
-      source_device_id: fBId,
-      target_device_id: stBId,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    });
-
-    return { standardNodes, standardEdges };
-  }, []);
-
-  // Initial history push or setup standard nodes if empty
+  // Initial history push if empty
   useEffect(() => {
-    if (nodes.length === 0 && loop) {
-      const { standardNodes, standardEdges } = buildStandard7NodeTopology(loop);
-      updateTopologyState(standardNodes, standardEdges, true);
-    } else if (history.length === 0 && (nodes.length > 0 || edges.length > 0)) {
+    if (history.length === 0 && (nodes.length > 0 || edges.length > 0)) {
       setHistory([{ nodes, edges }]);
       setHistoryIndex(0);
     }
-  }, [loop, nodes.length, edges.length, history.length, buildStandard7NodeTopology, updateTopologyState]);
+  }, [nodes.length, edges.length, history.length]);
 
   // Undo / Redo
   const handleUndo = () => {
@@ -419,25 +205,10 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
     setPan({ x: 30, y: 50 });
   };
 
-  // Action: Apply Strict 7-Node Standard Chain
-  const handleApplyStandard7NodeChain = () => {
-    if (!loop) {
-      alert('Không có thông tin cấu hình Khép vòng để thiết lập cấu trúc 7 nút.');
-      return;
-    }
-    const { standardNodes, standardEdges } = buildStandard7NodeTopology(loop);
-    updateTopologyState(standardNodes, standardEdges, true);
-    setPan({ x: 30, y: 50 });
-    setZoom(0.85);
-  };
-
+  
   // Auto Layout for arbitrary node collection
   const handleAutoLayout = () => {
     if (nodes.length === 0) return;
-    if (loop && nodes.length >= 7) {
-      handleApplyStandard7NodeChain();
-      return;
-    }
     const startX = 120;
     const startY = 220;
     const gapX = 280;
@@ -764,6 +535,17 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
     );
   });
 
+  
+  const mainLoopDevIndex = nodes.findIndex(n => {
+    const nId = String(n.device_id || '');
+    return Boolean(loop && (
+      nId === String(loop.loop_device_id || '') ||
+      nId === String(loop.loop_device_code || '') ||
+      nId === 'DEV_LOOP_MAIN'
+    ));
+  });
+  const mainLoopDevIdFromGraph = mainLoopDevIndex >= 0 ? String(nodes[mainLoopDevIndex].device_id || '') : null;
+
   return (
     <div className="relative w-full h-[680px] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col select-none">
       {/* Top Header Mandatory Chain Banner */}
@@ -855,16 +637,7 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
 
           <div className="h-4 w-[1px] bg-slate-800 mx-0.5" />
 
-          {/* Quick Standard 7-Node Layout Reset */}
-          {loop && !readOnly && (
-            <button
-              onClick={handleApplyStandard7NodeChain}
-              className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-lg shadow-md transition-all text-xs"
-              title="Căn chỉnh và hiển thị đúng chuẩn 7 nút: Trạm A → Tuyến A → TB A → TB Khép vòng → TB B → Tuyến B → Trạm B"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" /> [ ⚡ KHÉP VÒNG CHUẨN 7 NÚT ]
-            </button>
-          )}
+          
 
           {!readOnly && (
             <>
@@ -996,46 +769,7 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
         </div>
       </div>
 
-      {/* 7-NODE CHAIN VISUAL SEQUENCE STRIP (HIGHLIGHTING ĐIỂM DỪNG PHÁP LÝ) */}
-      <div className="bg-slate-900/90 border-b border-slate-800/80 px-4 py-2 flex items-center justify-between overflow-x-auto shadow-inner text-xs">
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Chuỗi 7 Nút:</span>
-          <div className="flex items-center gap-1.5 font-medium">
-            <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded font-semibold text-[11px] flex items-center gap-1">
-              <Building2 className="w-3 h-3 text-amber-400" /> Trạm {loop?.substation_name_a || loop?.substation_code_a || 'A'}
-            </span>
-            <ArrowRight className="w-3 h-3 text-slate-500" />
-            <span className="px-2 py-0.5 bg-sky-500/10 border border-sky-500/30 text-sky-300 rounded font-semibold text-[11px] flex items-center gap-1">
-              <Zap className="w-3 h-3 text-sky-400" /> Tuyến {loop?.feeder_code_a || 'A'}
-            </span>
-            <ArrowRight className="w-3 h-3 text-slate-500" />
-            <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-200 rounded font-semibold text-[11px]">
-              TB {loop?.device_code_a || loop?.device_id_a || 'A'}
-            </span>
-            <ArrowRight className="w-3.5 h-3.5 text-amber-400 font-black animate-pulse" />
-            {/* PROMINENT ĐIỂM DỪNG PHÁP LÝ HIGHLIGHT */}
-            <span className="px-3 py-1 bg-gradient-to-r from-amber-500 via-purple-600 to-amber-500 text-white rounded-lg font-black text-xs shadow-[0_0_15px_rgba(245,158,11,0.5)] border border-amber-300 ring-2 ring-amber-400/50 flex items-center gap-1.5 scale-105 animate-pulse">
-              <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-              <span>⚡ ĐIỂM DỪNG PHÁP LÝ ({loop?.loop_device_code || loop?.loop_device_name || loop?.loop_device_id || 'Tâm điểm'})</span>
-            </span>
-            <ArrowRight className="w-3.5 h-3.5 text-amber-400 font-black animate-pulse" />
-            <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-200 rounded font-semibold text-[11px]">
-              TB {loop?.device_code_b || loop?.device_id_b || 'B'}
-            </span>
-            <ArrowRight className="w-3 h-3 text-slate-500" />
-            <span className="px-2 py-0.5 bg-sky-500/10 border border-sky-500/30 text-sky-300 rounded font-semibold text-[11px] flex items-center gap-1">
-              <Zap className="w-3 h-3 text-sky-400" /> Tuyến {loop?.feeder_code_b || 'B'}
-            </span>
-            <ArrowRight className="w-3 h-3 text-slate-500" />
-            <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded font-semibold text-[11px] flex items-center gap-1">
-              <Building2 className="w-3 h-3 text-amber-400" /> Trạm {loop?.substation_name_b || loop?.substation_code_b || 'B'}
-            </span>
-          </div>
-        </div>
-        <div className="text-[11px] text-slate-400 font-medium shrink-0 ml-4">
-          Cấu trúc chuẩn EVN 7 nút khép mạch
-        </div>
-      </div>
+      
 
       {/* Main Canvas Viewport Area */}
       <div
@@ -1127,12 +861,7 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
               const srcId = String(sourceNode.device_id || '');
               const tgtId = String(targetNode.device_id || '');
               const isStationLink = srcId.startsWith('ST') || tgtId.startsWith('ST');
-              const isLoopMainLink = Boolean(loop && (
-                srcId === String(loop.loop_device_id || '') ||
-                tgtId === String(loop.loop_device_id || '') ||
-                srcId === 'DEV_LOOP_MAIN' ||
-                tgtId === 'DEV_LOOP_MAIN'
-              ));
+              const isLoopMainLink = Boolean(mainLoopDevIdFromGraph && (srcId === mainLoopDevIdFromGraph || tgtId === mainLoopDevIdFromGraph));
 
               const strokeColor = isSelected
                 ? '#38bdf8'
@@ -1238,11 +967,7 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
               const isFeederB = devId.startsWith('FDB_') || (devId.startsWith('FD') && node.pos_x > 1200);
               const isFeeder = isFeederA || isFeederB || dev.device_type === ('FEEDER' as any);
 
-              const isMainLoopDev = Boolean(loop && (
-                devId === String(loop.loop_device_id || '') ||
-                devId === String(loop.loop_device_code || '') ||
-                devId === 'DEV_LOOP_MAIN'
-              ));
+              const isMainLoopDev = (index === mainLoopDevIndex);
 
               // 1. RENDER STATION CARD (Trạm 110kV A / B)
               if (isStation) {

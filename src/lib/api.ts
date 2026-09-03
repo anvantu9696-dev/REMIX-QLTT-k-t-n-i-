@@ -76,7 +76,7 @@ async function request<T>(endpoint: string, options: CustomRequestInit = {}): Pr
       try {
         data = text ? JSON.parse(text) : {};
       } catch (e) {
-        data = { message: text.includes('<!doctype') || text.includes('<html') ? `Lỗi máy chủ hoặc không tìm thấy đường dẫn (${response.status})` : text || response.statusText };
+        data = { message: text.includes('<!doctype') || text.includes('<html') ? `L���i m��y ch��� ho���c kh��ng t��m th���y �������ng d���n (${response.status})` : text || response.statusText };
       }
     
       if (!response.ok) {
@@ -86,17 +86,17 @@ async function request<T>(endpoint: string, options: CustomRequestInit = {}): Pr
         }
         let message = data?.message;
         if (response.status === 413) {
-          message = data?.message || 'Ảnh vượt quá dung lượng cho phép (413). Hệ thống đã tự động nén ảnh nhưng vẫn vượt giới hạn, vui lòng chọn ảnh nhỏ hơn.';
+          message = data?.message || '���nh v�����t qu�� dung l�����ng cho ph��p (413). H��� th���ng ���� t��� �����ng n��n ���nh nh��ng v���n v�����t gi���i h���n, vui l��ng ch���n ���nh nh��� h��n.';
         } else if (response.status === 401) {
-          message = data?.message || 'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.';
+          message = data?.message || 'Phi��n ����ng nh���p h���t h���n. Vui l��ng ����ng nh���p l���i.';
         } else if (response.status === 403) {
-          message = data?.message || 'Bạn không có quyền thực hiện thao tác này.';
+          message = data?.message || 'B���n kh��ng c�� quy���n th���c hi���n thao t��c n��y.';
         } else if (response.status === 404) {
-          message = data?.message || 'Không tìm thấy API hoặc đường dẫn yêu cầu (404).';
+          message = data?.message || 'Kh��ng t��m th���y API ho���c �������ng d���n y��u c���u (404).';
         } else if (response.status >= 500) {
-          message = data?.message || 'Máy chủ gặp lỗi khi xử lý yêu cầu hoặc dữ liệu.';
+          message = data?.message || 'M��y ch��� g���p l���i khi x��� l�� y��u c���u ho���c d��� li���u.';
         }
-        const error: any = new Error(message || `Lỗi yêu cầu hệ thống (${response.status})`);
+        const error: any = new Error(message || `L���i y��u c���u h��� th���ng (${response.status})`);
         error.status = response.status;
         error.data = data;
         error.errors = data?.errors;
@@ -124,14 +124,14 @@ async function request<T>(endpoint: string, options: CustomRequestInit = {}): Pr
       attempt++;
       if (attempt > maxRetries) {
         console.warn('API Network Error after retries:', error);
-        throw new Error(error.name === 'AbortError' ? 'Thời gian chờ máy chủ quá lâu (timeout)' : (error.message || 'Kết nối đến máy chủ thất bại'));
+        throw new Error(error.name === 'AbortError' ? 'Th���i gian ch��� m��y ch��� qu�� l��u (timeout)' : (error.message || 'K���t n���i �����n m��y ch��� th���t b���i'));
       }
       // Wait before retry (exponential backoff: 500ms, 1000ms)
       await new Promise(resolve => setTimeout(resolve, attempt * 500));
     }
   }
 
-  throw new Error('Kết nối đến máy chủ thất bại');
+  throw new Error('K���t n���i �����n m��y ch��� th���t b���i');
 }
 
 export interface ImportItemResult {
@@ -168,6 +168,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     }),
+  logout: () =>
+    request<{ success: boolean; message: string }>('/auth/logout', { method: 'POST' }),
 
 
   register: (registerData: {
@@ -342,26 +344,36 @@ export const api = {
   getGuides: () =>
     request<{ success: boolean; data: GuideItem[] }>('/guides'),
 
-  // Substations (Trạm 110kV)
-  getSubstations: (params?: { search?: string; status?: string }, options?: CustomRequestInit) => {
-    const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: any[] }>(`/substations${query ? '?' + query : ''}`, { cacheTtl: 86400, ...options });
+  // Substations (Tr���m 110kV)
+  getSubstations: (params?: { search?: string; status?: string; limit?: number; lastDocId?: string }, options?: CustomRequestInit) => {
+    const validParams: any = {};
+    if (params) {
+       Object.keys(params).forEach(k => {
+           if ((params as any)[k] !== undefined) validParams[k] = (params as any)[k];
+       });
+    }
+    const query = new URLSearchParams(validParams).toString();
+    return request<{ success: boolean; data: any[], nextCursor?: string | null }>(`/substations${query ? '?' + query : ''}`, { cacheTtl: 86400, ...options });
   },
 
   getSubstation: (id: number, options?: CustomRequestInit) =>
     request<{ success: boolean; data: any }>(`/substations/${id}`, { cacheTtl: 86400, ...options }),
 
-  createSubstation: (data: any, operationId?: string) =>
-    request<{ success: boolean; message: string; data: any }>('/substations', {
+  createSubstation: (data: any, operationId?: string) => {
+    const payload = { ...data, operationId: operationId || crypto.randomUUID() };
+    return request<{ success: boolean; message: string; data: any }>('/substations', {
       method: 'POST',
-      body: JSON.stringify({ ...data, operationId: operationId || crypto.randomUUID() })
-    }),
+      body: JSON.stringify(payload)
+    });
+  },
 
-  updateSubstation: (id: number, data: any, operationId?: string, expectedVersion?: number) =>
-    request<{ success: boolean; message: string; data: any }>(`/substations/${id}`, {
+  updateSubstation: (id: number, data: any, operationId?: string, expectedVersion?: number) => {
+    const payload = { ...data, operationId: operationId || crypto.randomUUID(), expectedVersion };
+    return request<{ success: boolean; message: string; data: any }>(`/substations/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ ...data, operationId: operationId || crypto.randomUUID(), expectedVersion })
-    }),
+      body: JSON.stringify(payload)
+    });
+  },
 
   deleteSubstation: (id: number, operationId?: string) =>
     request<{ success: boolean; message: string }>(`/substations/${id}`, {
@@ -369,7 +381,7 @@ export const api = {
       body: JSON.stringify({ operationId: operationId || crypto.randomUUID() })
     }),
 
-  // Feeders (Phát tuyến)
+  // Feeders (Ph��t tuy���n)
   getFeeders: (params?: { search?: string; substation_id?: string | number; status?: string; limit?: number; lastDocId?: string }, options?: CustomRequestInit) => {
     const limit = params?.limit || 10;
     let url = `/feeders?limit=${limit}`;
@@ -412,11 +424,11 @@ export const api = {
       body: JSON.stringify({ operationId: operationId || crypto.randomUUID() })
     }),
 
-  // Devices (Thiết bị)
+  // Devices (Thi���t b���)
   checkDeviceId: (deviceId: string, excludeId?: number) => {
-    const query = excludeId ? `?excludeId=${excludeId}` : '';
+    const query = excludeId ? `&excludeId=${excludeId}` : '';
     return request<{ success: boolean; exists: boolean; device: any; message: string }>(
-      `/devices/check-device-id/${encodeURIComponent(deviceId)}${query}`
+      `/devices/check-device-id?device_id=${encodeURIComponent(deviceId)}${query}`
     );
   },
 
@@ -442,18 +454,18 @@ export const api = {
   },
 
   getDevice: (id: number | string) =>
-    request<{ success: boolean; data: any }>(`/devices/${id}`, { cacheTtl: 900 }),
+    request<{ success: boolean; data: any }>(`/devices/${encodeURIComponent(String(id))}`, { cacheTtl: 900 }),
 
   createDevice: async (data: any, operationId?: string) => {
     const opId = operationId || data.operationId || crypto.randomUUID();
+    const payload = { ...data, operationId: opId };
     const res = await request<{ success: boolean; message: string; data: any }>('/devices', {
       method: 'POST',
-      body: JSON.stringify({ ...data, operationId: opId })
+      body: JSON.stringify(payload)
     });
     if (res.success) invalidateRelatedDeviceCache(data);
     return res;
   },
-
   updateDevice: async (id: number | string, data: any, operationId?: string, expectedVersion?: number) => {
     const opId = operationId || data.operationId || crypto.randomUUID();
     const version = expectedVersion !== undefined ? expectedVersion : data.expectedVersion;
@@ -461,7 +473,7 @@ export const api = {
     if (version !== undefined) {
       payload.expectedVersion = version;
     }
-    const res = await request<{ success: boolean; message: string; data: any }>(`/devices/${id}`, {
+    const res = await request<{ success: boolean; message: string; data: any }>(`/devices/${encodeURIComponent(String(id))}`, {
       method: 'PUT',
       body: JSON.stringify(payload)
     });
@@ -470,7 +482,7 @@ export const api = {
   },
 
   deleteDevice: async (id: number | string, operationId?: string, deviceData?: any) => {
-    const res = await request<{ success: boolean; message: string }>(`/devices/${id}`, {
+    const res = await request<{ success: boolean; message: string }>(`/devices/${encodeURIComponent(String(id))}`, {
       method: 'DELETE',
       body: JSON.stringify({ operationId: operationId || crypto.randomUUID() })
     });
@@ -494,22 +506,22 @@ export const api = {
   },
 
   addDeviceImage: (deviceId: number | string, data: { image_url: string; caption?: string; is_primary?: boolean }) =>
-    request<{ success: boolean; message: string; data: any[] }>(`/devices/${deviceId}/images`, {
+    request<{ success: boolean; message: string; data: any[] }>(`/devices/${encodeURIComponent(String(deviceId))}/images`, {
       method: 'POST',
       body: JSON.stringify(data)
     }),
 
   deleteDeviceImage: (deviceId: number | string, imageId: number | string) =>
-    request<{ success: boolean; message: string; data: any[] }>(`/devices/${deviceId}/images/${imageId}`, {
+    request<{ success: boolean; message: string; data: any[] }>(`/devices/${encodeURIComponent(String(deviceId))}/images/${encodeURIComponent(String(imageId))}`, {
       method: 'DELETE'
     }),
 
   setPrimaryDeviceImage: (deviceId: number | string, imageId: number | string) =>
-    request<{ success: boolean; message: string; data: any[] }>(`/devices/${deviceId}/images/${imageId}/primary`, {
+    request<{ success: boolean; message: string; data: any[] }>(`/devices/${encodeURIComponent(String(deviceId))}/images/${encodeURIComponent(String(imageId))}/primary`, {
       method: 'PUT'
     }),
 
-  // Phase 3: Loops (Khép vòng)
+  // Phase 3: Loops (Kh��p v��ng)
   getLoops: (params?: { search?: string; status?: string; substation_id?: string | number; feeder_id?: string | number }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
     return request<{ success: boolean; data: any[] }>(`/loops${query ? '?' + query : ''}`);
@@ -605,7 +617,7 @@ export const api = {
       body: JSON.stringify({ confirmation })
     }),
 
-  // Phase 3: Approvals (Phê duyệt Sơ đồ)
+  // Phase 3: Approvals (Ph�� duy���t S�� �����)
   getApprovals: (params?: { status?: string; search?: string }) => {
     const cleanParams: Record<string, string> = {};
     if (params) {
@@ -622,7 +634,7 @@ export const api = {
       body: JSON.stringify({ action, review_notes })
     }),
 
-  // Phase 4: Tasks (Công việc & Giao việc)
+  // Phase 4: Tasks (C��ng vi���c & Giao vi���c)
   getTasks: (params?: { search?: string; status?: string; priority?: string; device_id?: string | number; team?: string; assigned_to?: string | number; archived?: 'true' | 'false' | 'only' | 'all' | boolean | string }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
     return request<{ success: boolean; data: any[]; total: number; archived_count?: number }>(`/tasks${query ? '?' + query : ''}`);
@@ -716,7 +728,7 @@ export const api = {
       method: 'DELETE'
     }),
 
-  // Phase 4: Checklists (Mẫu kiểm tra)
+  // Phase 4: Checklists (M���u ki���m tra)
   getChecklists: (params?: { search?: string; category?: string; target_device_type?: string }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
     return request<{ success: boolean; data: any[] }>(`/checklists${query ? '?' + query : ''}`, { cacheTtl: 21600 });
@@ -755,7 +767,7 @@ export const api = {
       method: 'DELETE'
     }),
 
-  // Phase 4: Inspection Schedules (Kiểm tra định kỳ)
+  // Phase 4: Inspection Schedules (Ki���m tra �����nh k���)
   getSchedules: () =>
     request<{ success: boolean; data: any[] }>('/schedules'),
 
@@ -781,7 +793,7 @@ export const api = {
       method: 'POST'
     }),
 
-  // Phase 4: Issues / Anomalies (Bất thường)
+  // Phase 4: Issues / Anomalies (B���t th�����ng)
   getIssues: (params?: { search?: string; status?: string; severity?: string; device_id?: string | number }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
     return request<{ success: boolean; data: any[]; total: number }>(`/issues${query ? '?' + query : ''}`);

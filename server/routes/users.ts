@@ -1,3 +1,4 @@
+import { invalidateCache } from '../utils/firestoreCache';
 import { Router } from 'express';
 import { authenticateToken, denyGuestMutations, requireRole, recordAuditLog, AuthenticatedRequest } from '../middleware.js';
 import { getTargetFirestore, getTargetAuth } from '../firebaseAdmin.js';
@@ -67,6 +68,7 @@ router.patch('/sync/status', requireRole(['ADMIN']), async (req: AuthenticatedRe
       isActive: status === 'ACTIVE',
       updatedAt: new Date().toISOString()
     });
+    invalidateCache(`user_profile_${req.params.id}`);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
@@ -86,6 +88,7 @@ router.patch('/sync/role', requireRole(['ADMIN']), async (req: AuthenticatedRequ
       roles: [role],
       updatedAt: new Date().toISOString()
     });
+    invalidateCache(`user_profile_${req.params.id}`);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
@@ -98,6 +101,7 @@ router.delete('/sync/delete', requireRole(['ADMIN']), async (req: AuthenticatedR
   if (email === PROTECTED_EMAIL) return res.status(403).json({ success: false, message: 'Không thể xóa tài khoản quản trị chính.' });
   try {
     await getTargetFirestore().collection('users').doc(uid).update({ deleted_at: new Date().toISOString() });
+    invalidateCache(`user_profile_${uid}`);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
@@ -179,6 +183,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req: AuthenticatedRequest, res
       full_name, phone, unit, team, title,
       updatedAt: new Date().toISOString()
     });
+    invalidateCache(`user_profile_${req.params.id}`);
     res.json({ success: true, message: 'Đã cập nhật' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
@@ -273,9 +278,8 @@ router.delete('/:id', requireRole(['ADMIN']), async (req: AuthenticatedRequest, 
   try {
     const user = await findUserById(req.params.id);
     if (!user) return res.status(404).json({ success: false });
-    await getTargetFirestore().collection('users').doc(user.id).update({
-      deleted_at: new Date().toISOString()
-    });
+    await getTargetFirestore().collection('users').doc(user.id).update({ deleted_at: new Date().toISOString() });
+    invalidateCache(`user_profile_${user.id}`);
     res.json({ success: true, message: 'Đã xóa' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });

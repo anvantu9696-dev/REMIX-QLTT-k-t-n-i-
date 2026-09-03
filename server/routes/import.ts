@@ -31,17 +31,28 @@ interface RawImportRow {
 }
 
 const resolveIds = (row: RawImportRow, subs: any[], feeders: any[]) => {
-  let subId = null;
-  let fdrId = null;
-  if (row.substation_code) {
-    const s = subs.find(x => x.substation_code === row.substation_code);
-    if (s) subId = s.id;
+  const subCode = row.substation_code ? row.substation_code.trim().toUpperCase() : null;
+  const feederCode = row.feeder_code ? row.feeder_code.trim().toUpperCase() : null;
+  
+  if (!subCode || !feederCode) {
+      throw new Error('Thiếu mã trạm hoặc mã phát tuyến');
   }
-  if (row.feeder_code) {
-    const f = feeders.find(x => x.feeder_code === row.feeder_code && (!subId || x.substation_id === subId));
-    if (f) fdrId = f.id;
+
+  const s = subs.find(x => x.substation_code && x.substation_code.trim().toUpperCase() === subCode);
+  if (!s) {
+      throw new Error(`Trạm không tồn tại: ${subCode}`);
   }
-  return { substation_id: subId, feeder_id: fdrId };
+
+  const f = feeders.find(x => x.feeder_code && x.feeder_code.trim().toUpperCase() === feederCode);
+  if (!f) {
+      throw new Error(`Phát tuyến không tồn tại: ${feederCode}`);
+  }
+  
+  if (String(f.substation_id) !== String(s.id)) {
+      throw new Error(`Phát tuyến ${feederCode} không thuộc trạm ${subCode}`);
+  }
+
+  return { substation_id: s.id, feeder_id: f.id };
 };
 
 router.post('/direct', requireRole(['ADMIN']), async (req: AuthenticatedRequest, res) => {
@@ -66,7 +77,15 @@ router.post('/direct', requireRole(['ADMIN']), async (req: AuthenticatedRequest,
        const row = rows[i];
        if (!row.device_id) { failedItems.push(row); continue; }
        
-       const { substation_id, feeder_id } = resolveIds(row, subs, feeders);
+       let substation_id, feeder_id;
+       try {
+           const res = resolveIds(row, subs, feeders);
+           substation_id = res.substation_id;
+           feeder_id = res.feeder_id;
+       } catch (e) {
+           failedItems.push({ ...row, reason: 'UNRESOLVED: ' + e.message });
+           continue;
+       }
        const ext = existing.find(d => d.name === row.device_id || d.id === row.device_id);
        
        const deviceData = {
@@ -145,7 +164,12 @@ router.post('/analyze', requireRole(['ADMIN']), async (req: AuthenticatedRequest
                device_id: row.device_id
            });
        } else {
-           valid.push(row);
+           try {
+               resolveIds(row, subs, feeders);
+               valid.push(row);
+           } catch(e) {
+               invalid.push({ ...row, reason: 'UNRESOLVED: ' + e.message });
+           }
        }
     });
 
@@ -170,7 +194,15 @@ router.post('/confirm', requireRole(['ADMIN']), async (req: AuthenticatedRequest
     const successItems: any[] = [];
 
     newItems.forEach((row: any) => {
-       const { substation_id, feeder_id } = resolveIds(row, subs, feeders);
+       let substation_id, feeder_id;
+       try {
+           const res = resolveIds(row, subs, feeders);
+           substation_id = res.substation_id;
+           feeder_id = res.feeder_id;
+       } catch (e) {
+           successItems.push({ code: row.device_id, action: 'UNRESOLVED', status: 'FAILED', reason: e.message });
+           return;
+       }
        const ref = db.collection('devices').doc();
        batch.set(ref, {
            name: row.name || row.device_id,
@@ -195,7 +227,15 @@ router.post('/confirm', requireRole(['ADMIN']), async (req: AuthenticatedRequest
            const row = resItem.fileData;
            const ext = existing.find(d => d.name === row.device_id || d.id === row.device_id);
            if (ext) {
-               const { substation_id, feeder_id } = resolveIds(row, subs, feeders);
+               let substation_id, feeder_id;
+               try {
+                   const res = resolveIds(row, subs, feeders);
+                   substation_id = res.substation_id;
+                   feeder_id = res.feeder_id;
+               } catch (e) {
+                   successItems.push({ code: row.device_id, action: 'UNRESOLVED', status: 'FAILED', reason: e.message });
+                   return;
+               }
                const ref = db.collection('devices').doc(ext.id);
                batch.update(ref, {
                    name: row.name || row.device_id,

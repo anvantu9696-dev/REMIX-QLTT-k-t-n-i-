@@ -20,7 +20,9 @@ router.get('/', authenticateToken, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADE
     const { search, status, sortBy, sortOrder } = req.query;
 
     
-        let substations = await substationRepo.list({ status: status as string });
+        const limit = req.query.limit ? Number(req.query.limit) : undefined;
+        const lastDocId = req.query.lastDocId as string | undefined;
+        let substations = await substationRepo.list({ status: status as string, limit, lastDocId });
         
         if (search) {
           const q = search.toString().toLowerCase();
@@ -228,10 +230,8 @@ router.delete(
 
       
           // Verify dependencies
-          const activeFeeders = await feederRepo.list();
-          const hasFeeders = activeFeeders.some((f: any) => String(f.substation_id) === String(id));
-
-          if (hasFeeders) return res.status(409).json({ success: false, code: 'SUBSTATION_HAS_ACTIVE_FEEDERS', message: 'Trạm đang có phát tuyến hoạt động.' });
+          const feedersCount = await feederRepo.count({ substation_id: id });
+          if (feedersCount > 0) return res.status(409).json({ success: false, code: 'SUBSTATION_HAS_ACTIVE_FEEDERS', message: 'Trạm đang có phát tuyến hoạt động.' });
           
           try {
               const deleted = await substationRepo.delete(id, operationId);
