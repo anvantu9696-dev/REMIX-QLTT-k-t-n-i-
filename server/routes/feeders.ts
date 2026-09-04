@@ -25,7 +25,7 @@ router.get('/', authenticateToken, validatePayload, async (req: AuthenticatedReq
         const feeders = await feederRepo.list({
             substation_id: substation_id ? (substation_id as string) : undefined,
             status: status ? (status as string) : undefined,
-            limit: Number(limit) || 10,
+            limit: limit ? Number(limit) : undefined,
             lastDocId: lastDocId ? (lastDocId as string) : undefined
         });
         
@@ -177,7 +177,7 @@ router.put(
       const { feeder_code, name, substation_id, start_point, end_point, notes, status, operationId, expectedVersion } = req.body;
 
       if (!operationId) return res.status(400).json({ success: false, code: 'OPERATION_ID_REQUIRED' });
-      if (expectedVersion === undefined) return res.status(400).json({ success: false, code: 'EXPECTED_VERSION_REQUIRED' });
+      
 
       
           const feeder = await feederRepo.getById(id);
@@ -190,7 +190,7 @@ router.put(
                   name: name?.trim(),
                   status,
                   updatedBy: req.user?.username || 'SYSTEM'
-              }, expectedVersion, operationId);
+              }, expectedVersion === undefined ? 1 : expectedVersion, operationId);
 
               recordAuditLog({
                 user_id: req.user!.id,

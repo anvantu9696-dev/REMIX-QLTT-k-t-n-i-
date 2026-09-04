@@ -48,9 +48,40 @@
         "deviceBId": { "type": "string" }
       },
       "required": ["id", "name", "deviceAId", "deviceBId"]
+    },
+    "gridStructureMetadata": {
+      "title": "Grid Structure Metadata",
+      "description": "Bundled static substations and feeders",
+      "type": "object",
+      "properties": {
+        "substations": { "type": "array" },
+        "feeders": { "type": "array" }
+      },
+      "required": ["substations", "feeders"]
+    },
+    "systemStats": {
+      "title": "System Stats",
+      "description": "Aggregated system and dashboard metrics",
+      "type": "object",
+      "properties": {
+        "total_devices": { "type": "number" },
+        "total_substations": { "type": "number" },
+        "total_feeders": { "type": "number" },
+        "active_devices": { "type": "number" },
+        "maintenance_devices": { "type": "number" }
+      },
+      "required": ["total_devices", "total_substations", "total_feeders"]
     }
   },
   "firestore": {
+    "/system_stats/{statId}": {
+      "schema": "systemStats",
+      "description": "System stats document"
+    },
+    "/metadata/{metaId}": {
+      "schema": "gridStructureMetadata",
+      "description": "System metadata bundle"
+    },
     "/stations/{stationId}": {
       "schema": "station",
       "description": "Stations collection"

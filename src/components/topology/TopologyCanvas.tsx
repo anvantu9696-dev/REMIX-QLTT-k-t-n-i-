@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { Device, TopologyNode, TopologyEdge, Loop, SwitchStatus, Substation, Feeder } from '../../types';
 import { api } from '../../lib/api';
+import { useDataContext } from '../../context/DataContext';
 import { validateTopology, TopologyValidationReport } from '../../lib/topologyValidator';
 import { TopologyDiagnosticsModal } from './TopologyDiagnosticsModal';
 
@@ -67,6 +68,8 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
   // Connection creation mode
   const [connectSourceId, setConnectSourceId] = useState<string | null>(null);
 
+  const { devices: dataContextDevices, substations: dataContextSubstations, feeders: dataContextFeeders } = useDataContext();
+
   // History stack for Undo / Redo
   const [history, setHistory] = useState<{ nodes: TopologyNode[]; edges: TopologyEdge[] }[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
@@ -76,6 +79,12 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
   const [allDbSubstations, setAllDbSubstations] = useState<Substation[]>([]);
   const [allDbFeeders, setAllDbFeeders] = useState<Feeder[]>([]);
   const [allDbLoops, setAllDbLoops] = useState<Loop[]>([]);
+
+  useEffect(() => {
+    if (dataContextDevices?.length) setSystemDevices(dataContextDevices);
+    if (dataContextSubstations?.length) setAllDbSubstations(dataContextSubstations);
+    if (dataContextFeeders?.length) setAllDbFeeders(dataContextFeeders);
+  }, [dataContextDevices, dataContextSubstations, dataContextFeeders]);
 
   // Topology Diagnostics & Validation state
   const [validationReport, setValidationReport] = useState<TopologyValidationReport | null>(null);
@@ -95,18 +104,10 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load all reference data from DB for accurate relational & topological check
+  // Load loops reference data from DB for accurate relational & topological check
   const fetchAllReferenceData = useCallback(async () => {
     try {
-      const [devRes, subRes, feedRes, loopRes] = await Promise.all([
-        api.getDevices({ limit: 500 }),
-        api.getSubstations(),
-        api.getFeeders(),
-        api.getLoops()
-      ]);
-      if (devRes.success) setSystemDevices(devRes.data);
-      if (subRes.success) setAllDbSubstations(subRes.data);
-      if (feedRes.success) setAllDbFeeders(feedRes.data);
+      const loopRes = await api.getLoops();
       if (loopRes.success) setAllDbLoops(loopRes.data);
     } catch (e) {
       console.error('Error fetching reference data for topology validator:', e);
@@ -205,8 +206,21 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
     setPan({ x: 30, y: 50 });
   };
 
-  
-  // Auto Layout for arbitrary node collection
+  // Helper to dynamically build sequential edges for multi-node topology (i -> i+1)
+  const generateSequentialEdges = (nodeList: TopologyNode[]): TopologyEdge[] => {
+    const newEdges: TopologyEdge[] = [];
+    for (let i = 0; i < nodeList.length - 1; i++) {
+      newEdges.push({
+        source_device_id: nodeList[i].device_id,
+        target_device_id: nodeList[i + 1].device_id,
+        connection_type: 'OVERHEAD',
+        status: 'ACTIVE'
+      });
+    }
+    return newEdges;
+  };
+
+  // Auto Layout for arbitrary node collection & automatic sequential edge connection
   const handleAutoLayout = () => {
     if (nodes.length === 0) return;
     const startX = 120;
@@ -219,7 +233,18 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
       pos_y: startY + (index % 2 === 1 ? 40 : 0)
     }));
 
-    updateTopologyState(newNodes, edges);
+    const newEdges = generateSequentialEdges(newNodes);
+    updateTopologyState(newNodes, newEdges);
+  };
+
+  // Manual trigger to re-connect nodes sequentially
+  const handleAutoConnectSequential = () => {
+    if (nodes.length < 2) {
+      alert('Cần ít nhất 2 nút trên sơ đồ để tạo liên kết tuần tự!');
+      return;
+    }
+    const newEdges = generateSequentialEdges(nodes);
+    updateTopologyState(nodes, newEdges);
   };
 
   // Mouse wheel zoom
@@ -363,47 +388,51 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
     updateTopologyState(nodes, newEdges);
   };
 
-  // Load system devices
-  const fetchSystemDevices = async () => {
-    try {
-      const res = await api.getDevices({ limit: 100 });
-      if (res.success) {
-        setSystemDevices(res.data);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
+  // Open Add Device Modal
   const handleOpenAddDeviceModal = () => {
-    fetchSystemDevices();
+    if (dataContextDevices?.length) {
+      setSystemDevices(dataContextDevices);
+    }
     setIsAddDeviceOpen(true);
   };
 
-  const handleSelectDeviceToAdd = (device: Device) => {
+  const handleSelectDeviceToAdd = (device: Device, direction: 'HEAD_A' | 'HEAD_B' = 'HEAD_B') => {
     if (nodes.some(n => n.device_id === device.device_id)) {
       alert(`Thiết bị ${device.device_id} đã có trên sơ đồ!`);
       return;
     }
 
-    const rect = containerRef.current?.getBoundingClientRect();
-    const centerX = rect ? (rect.width / 2 - pan.x) / zoom : 400;
-    const centerY = rect ? (rect.height / 2 - pan.y) / zoom : 250;
+    let newNodes: TopologyNode[];
+    if (direction === 'HEAD_A') {
+      const minX = nodes.length > 0 ? Math.min(...nodes.map(n => n.pos_x)) : 120;
+      const newNode: TopologyNode = {
+        device_id: device.device_id,
+        pos_x: Math.max(20, minX - 280),
+        pos_y: 220,
+        device
+      };
+      newNodes = [newNode, ...nodes];
+    } else {
+      const maxX = nodes.length > 0 ? Math.max(...nodes.map(n => n.pos_x)) : 120;
+      const newNode: TopologyNode = {
+        device_id: device.device_id,
+        pos_x: maxX + 280,
+        pos_y: 220,
+        device
+      };
+      newNodes = [...nodes, newNode];
+    }
 
-    const newNode: TopologyNode = {
-      device_id: device.device_id,
-      pos_x: Math.round(centerX),
-      pos_y: Math.round(centerY),
-      device
-    };
-
+    const newEdges = generateSequentialEdges(newNodes);
     setIsAddDeviceOpen(false);
-    updateTopologyState([...nodes, newNode], edges);
+    updateTopologyState(newNodes, newEdges);
   };
 
   // Add intermediate device
   const handleOpenAddBetweenModal = () => {
-    fetchSystemDevices();
+    if (dataContextDevices?.length) {
+      setSystemDevices(dataContextDevices);
+    }
     setIsAddBetweenOpen(true);
   };
 
@@ -413,25 +442,31 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
       return;
     }
 
+    let insertIdx = nodes.length > 0 ? Math.floor(nodes.length / 2) : 0;
     let sourceNode: TopologyNode | undefined;
     let targetNode: TopologyNode | undefined;
 
     if (selectedEdgeIndex !== null && edges[selectedEdgeIndex]) {
       const edge = edges[selectedEdgeIndex];
-      sourceNode = nodes.find(n => n.device_id === edge.source_device_id);
-      targetNode = nodes.find(n => n.device_id === edge.target_device_id);
+      const sIdx = nodes.findIndex(n => n.device_id === edge.source_device_id);
+      const tIdx = nodes.findIndex(n => n.device_id === edge.target_device_id);
+      if (sIdx !== -1 && tIdx !== -1) {
+        insertIdx = Math.min(sIdx, tIdx) + 1;
+        sourceNode = nodes[sIdx];
+        targetNode = nodes[tIdx];
+      }
     } else if (nodes.length >= 2) {
       sourceNode = nodes[0];
       targetNode = nodes[1];
+      insertIdx = 1;
     }
 
-    if (!sourceNode || !targetNode) {
-      alert('Vui lòng chọn một đường dây kết nối hoặc ít nhất 2 nút trên sơ đồ!');
-      return;
-    }
-
-    const newPosX = Math.round((sourceNode.pos_x + targetNode.pos_x) / 2);
-    const newPosY = Math.round((sourceNode.pos_y + targetNode.pos_y) / 2);
+    const newPosX = sourceNode && targetNode
+      ? Math.round((sourceNode.pos_x + targetNode.pos_x) / 2)
+      : 300;
+    const newPosY = sourceNode && targetNode
+      ? Math.round((sourceNode.pos_y + targetNode.pos_y) / 2)
+      : 220;
 
     const intermediateNode: TopologyNode = {
       device_id: newDevice.device_id,
@@ -440,36 +475,23 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
       device: newDevice
     };
 
-    const remainingEdges = edges.filter(
-      e =>
-        !(
-          (e.source_device_id === sourceNode!.device_id && e.target_device_id === targetNode!.device_id) ||
-          (e.source_device_id === targetNode!.device_id && e.target_device_id === sourceNode!.device_id)
-        )
-    );
+    const newNodes = [
+      ...nodes.slice(0, insertIdx),
+      intermediateNode,
+      ...nodes.slice(insertIdx)
+    ];
 
-    const newEdge1: TopologyEdge = {
-      source_device_id: sourceNode.device_id,
-      target_device_id: newDevice.device_id,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    };
-
-    const newEdge2: TopologyEdge = {
-      source_device_id: newDevice.device_id,
-      target_device_id: targetNode.device_id,
-      connection_type: 'OVERHEAD',
-      status: 'ACTIVE'
-    };
-
+    const newEdges = generateSequentialEdges(newNodes);
     setIsAddBetweenOpen(false);
-    updateTopologyState([...nodes, intermediateNode], [...remainingEdges, newEdge1, newEdge2]);
+    updateTopologyState(newNodes, newEdges);
   };
 
   // Replace Device
   const handleOpenReplaceModal = () => {
     if (!selectedNodeId) return;
-    fetchSystemDevices();
+    if (dataContextDevices?.length) {
+      setSystemDevices(dataContextDevices);
+    }
     setIsReplaceDeviceOpen(true);
   };
 
@@ -552,23 +574,15 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
       <div className="z-20 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex items-center space-x-2">
           <span className="flex items-center text-blue-400 font-bold gap-1 bg-blue-950/80 px-2.5 py-1 rounded-lg border border-blue-800/60">
-            <Activity className="w-4 h-4 animate-pulse text-blue-400" /> Sơ đồ GRAPH Khép Vòng Chuẩn (7 Nút)
+            <Activity className="w-4 h-4 animate-pulse text-blue-400" /> Sơ đồ GRAPH Khép Vòng Đa Nút ({nodes.length} Nút)
           </span>
 
           <div className="hidden lg:flex items-center space-x-1 text-[11px] text-slate-300 bg-slate-950/80 px-2.5 py-1 rounded-lg border border-slate-800 font-mono">
-            <span className="text-amber-400 font-bold">Trạm 110kV A</span>
-            <span className="text-slate-500">→</span>
-            <span className="text-sky-400 font-bold">Phát tuyến A</span>
-            <span className="text-slate-500">→</span>
-            <span className="text-emerald-400 font-bold">TB A</span>
-            <span className="text-slate-500">→</span>
-            <span className="text-purple-300 font-black bg-purple-950/80 px-1 rounded border border-purple-800">TB Khép Vòng</span>
-            <span className="text-slate-500">→</span>
-            <span className="text-emerald-400 font-bold">TB B</span>
-            <span className="text-slate-500">→</span>
-            <span className="text-sky-400 font-bold">Phát tuyến B</span>
-            <span className="text-slate-500">→</span>
-            <span className="text-amber-400 font-bold">Trạm 110kV B</span>
+            <span className="text-amber-400 font-bold">Nguồn A</span>
+            <span className="text-slate-500">↔</span>
+            <span className="text-emerald-400 font-bold">Chuỗi {nodes.length} Nút Linh Hoạt</span>
+            <span className="text-slate-500">↔</span>
+            <span className="text-amber-400 font-bold">Nguồn B</span>
           </div>
 
           {connectSourceId && (
@@ -705,13 +719,23 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
 
               <div className="h-4 w-[1px] bg-slate-800 mx-0.5"></div>
 
-              {/* Auto Layout */}
+              {/* Auto Layout & Auto Connect */}
               <button
                 onClick={handleAutoLayout}
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
-                title="Căn chỉnh tự động (Auto Layout)"
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold px-2"
+                title="Căn chỉnh vị trí tự động (Auto Layout)"
               >
                 <LayoutGrid className="w-4 h-4" />
+                <span>Layout</span>
+              </button>
+
+              <button
+                onClick={handleAutoConnectSequential}
+                className="p-1.5 bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-300 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold px-2"
+                title="Tự động nối liên kết tuần tự theo chuỗi nút hiện tại"
+              >
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Nối Tuần Tự</span>
               </button>
 
               {/* Undo / Redo */}
@@ -1244,11 +1268,11 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
 
         {/* Empty Canvas Prompt */}
         {nodes.length === 0 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-slate-500 pointer-events-none">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-slate-500 pointer-events-none z-10">
             <Activity className="w-12 h-12 text-slate-700 mb-3 animate-pulse" />
             <h3 className="text-sm font-bold text-slate-300 mb-1">Sơ đồ Topology trống</h3>
-            <p className="text-xs text-slate-500 max-w-sm mb-4">
-              Bấm nút <strong>[ ⚡ KHÉP VÒNG CHUẨN 7 NÚT ]</strong> hoặc <strong>[ + Thêm Thiết Bị ]</strong> phía trên để khởi tạo sơ đồ.
+            <p className="text-xs text-slate-400 max-w-sm mb-4">
+              Bấm nút <strong className="text-blue-400">[ + Thêm Thiết Bị ]</strong> để bắt đầu vẽ sơ đồ Khép vòng.
             </p>
           </div>
         )}
@@ -1333,17 +1357,35 @@ export const TopologyCanvas: React.FC<TopologyCanvasProps> = ({
                         </p>
                       </div>
 
-                      <button
-                        onClick={() => handleSelectDeviceToAdd(device)}
-                        disabled={isOnCanvas}
-                        className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-colors ${
-                          isOnCanvas
-                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                            : 'bg-blue-600 hover:bg-blue-500 text-white'
-                        }`}
-                      >
-                        {isOnCanvas ? 'Đã có trên sơ đồ' : 'Chọn vào sơ đồ'}
-                      </button>
+                      {isOnCanvas ? (
+                        <span className="px-3 py-1.5 rounded-lg font-bold text-xs bg-slate-800 text-slate-600">
+                          Đã có trên sơ đồ
+                        </span>
+                      ) : nodes.length === 0 ? (
+                        <button
+                          onClick={() => handleSelectDeviceToAdd(device, 'HEAD_B')}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1 shadow-md shadow-blue-600/30"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Thêm vào sơ đồ
+                        </button>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleSelectDeviceToAdd(device, 'HEAD_A')}
+                            className="px-2.5 py-1.5 rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1 shadow"
+                            title="Thêm vào hướng Đầu A (chèn vào đầu chuỗi)"
+                          >
+                            ⬅️ Thêm Đầu A
+                          </button>
+                          <button
+                            onClick={() => handleSelectDeviceToAdd(device, 'HEAD_B')}
+                            className="px-2.5 py-1.5 rounded-lg font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center gap-1 shadow"
+                            title="Thêm vào hướng Đầu B (thêm vào cuối chuỗi)"
+                          >
+                            ➡️ Thêm Đầu B
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })

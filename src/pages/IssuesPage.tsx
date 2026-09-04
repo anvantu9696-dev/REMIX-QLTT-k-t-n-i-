@@ -18,13 +18,17 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import { Issue, IssueSeverity, IssueStatus, Device, User as UserType } from '../types';
 import { formatDateTime, formatRelativeTime } from '../utils/dateTime';
 
 export const IssuesPage: React.FC = () => {
   const { user } = useAuth();
+  const { devices, fetchDevices } = useDataContext();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,7 +41,6 @@ export const IssuesPage: React.FC = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
 
   // Ref data
-  const [devices, setDevices] = useState<Device[]>([]);
   const [usersList, setUsersList] = useState<UserType[]>([]);
 
   // Report Form State
@@ -65,9 +68,13 @@ export const IssuesPage: React.FC = () => {
       const res = await api.getIssues({
         search: searchTerm,
         status: statusFilter,
-        severity: severityFilter
+        severity: severityFilter,
+        limit: 50
       });
-      if (res.success) setIssues(res.data);
+      if (res.success) {
+        setIssues(res.data);
+        setNextCursor(res.nextCursor || null);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -77,11 +84,8 @@ export const IssuesPage: React.FC = () => {
 
   const loadRefData = async () => {
     try {
-      const [devRes, userRes] = await Promise.all([
-        api.getDevices(),
-        api.getUsers()
-      ]);
-      if (devRes.success) setDevices(devRes.data);
+      fetchDevices();
+      const userRes = await api.getUsers();
       if (userRes.success) {
         setUsersList(userRes.data.filter((u: UserType) => 
           u.status === 'ACTIVE' && 
@@ -158,6 +162,29 @@ export const IssuesPage: React.FC = () => {
       if (res.success) loadIssues();
     } catch (e: any) {
       alert(e.message);
+    }
+  };
+
+  
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.getIssues({
+        search: searchTerm,
+        status: statusFilter,
+        severity: severityFilter,
+        limit: 50,
+        lastDocId: nextCursor
+      });
+      if (res.success) {
+        setIssues(prev => [...prev, ...res.data]);
+        setNextCursor(res.nextCursor || null);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMore(false);
     }
   };
 

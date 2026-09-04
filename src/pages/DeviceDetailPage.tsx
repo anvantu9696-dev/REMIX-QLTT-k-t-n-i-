@@ -24,7 +24,7 @@ import {
   Share2
 } from 'lucide-react';
 import { api } from '../lib/api';
-import { Device, DeviceImage, DeviceLocation, DeviceStatusHistory } from '../types';
+import { Device, DeviceImage, DeviceLocation, DeviceStatusHistory, AuditLog } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { DeviceProposalModal } from '../components/devices/DeviceProposalModal';
 import { ImageViewerModal } from '../components/devices/ImageViewerModal';
@@ -47,6 +47,19 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
   // Active Tab
   const [activeTab, setActiveTab] = useState<'info' | 'location' | 'images' | 'status' | 'audit' | 'future'>('info');
 
+  // Lazy-loaded subcollections
+  const [locationHistory, setLocationHistory] = useState<DeviceLocation[] | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(false);
+
+  const [deviceImages, setDeviceImages] = useState<DeviceImage[] | null>(null);
+  const [loadingImages, setLoadingImages] = useState(false);
+
+  const [statusHistory, setStatusHistory] = useState<DeviceStatusHistory[] | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+
+  const [auditLogs, setAuditLogs] = useState<AuditLog[] | null>(null);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
   // Proposal Modal State
   const [proposalModalOpen, setProposalModalOpen] = useState(false);
   const [proposalMode, setProposalMode] = useState<'CREATE' | 'UPDATE' | 'LOCATION' | 'STATUS' | 'DELETE' | 'IMAGE'>('UPDATE');
@@ -67,15 +80,16 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
     if (device?.primary_image) {
       list.push({ url: device.primary_image, caption: `Ảnh đại diện - ${device.name}` });
     }
-    if (device?.images && device.images.length > 0) {
-      device.images.forEach(img => {
-        if (!device.primary_image || img.image_url !== device.primary_image) {
+    const currentImgs = deviceImages || device?.images || [];
+    if (currentImgs && currentImgs.length > 0) {
+      currentImgs.forEach(img => {
+        if (!device?.primary_image || img.image_url !== device.primary_image) {
           list.push({ url: img.image_url, caption: img.caption || 'Hình ảnh hiện trường' });
         }
       });
     }
     return list;
-  }, [device]);
+  }, [device, deviceImages]);
 
   useEffect(() => {
     fetchDeviceDetail();
@@ -95,6 +109,75 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
     }
   };
 
+  const fetchLocationHistory = async () => {
+    setLoadingLocation(true);
+    try {
+      const res = await api.getDeviceLocations(deviceId, 20);
+      if (res.success && Array.isArray(res.data)) {
+        setLocationHistory(res.data);
+      }
+    } catch (err: any) {
+      console.error('Error fetching device locations:', err);
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
+  const fetchImages = async () => {
+    setLoadingImages(true);
+    try {
+      const res = await api.getDeviceImages(deviceId);
+      if (res.success && Array.isArray(res.data)) {
+        setDeviceImages(res.data);
+      }
+    } catch (err: any) {
+      console.error('Error fetching device images:', err);
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
+  const fetchStatusHistory = async () => {
+    setLoadingStatus(true);
+    try {
+      const res = await api.getDeviceHistory(deviceId, 20);
+      if (res.success && Array.isArray(res.data)) {
+        setStatusHistory(res.data);
+      }
+    } catch (err: any) {
+      console.error('Error fetching device status history:', err);
+    } finally {
+      setLoadingStatus(false);
+    }
+  };
+
+  const fetchAuditLogs = async () => {
+    setLoadingAudit(true);
+    try {
+      const res = await api.getAuditLogs({ target_id: String(deviceId), limit: 20 });
+      if (res.success && Array.isArray(res.data)) {
+        setAuditLogs(res.data);
+      }
+    } catch (err: any) {
+      console.error('Error fetching device audit logs:', err);
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
+  // Lazy load subcollections on tab click
+  useEffect(() => {
+    if (activeTab === 'location' && locationHistory === null) {
+      fetchLocationHistory();
+    } else if (activeTab === 'images' && deviceImages === null) {
+      fetchImages();
+    } else if (activeTab === 'status' && statusHistory === null) {
+      fetchStatusHistory();
+    } else if (activeTab === 'audit' && auditLogs === null) {
+      fetchAuditLogs();
+    }
+  }, [activeTab, deviceId]);
+
   const handleAddImage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!imageUrl.trim()) return;
@@ -108,7 +191,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
       setImageUrl('');
       setImageCaption('');
       setAddImageModal(false);
-      fetchDeviceDetail();
+      fetchImages();
     } catch (err: any) {
       setError(err.message || 'Không thể tải lên ảnh');
     }
@@ -121,7 +204,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
     try {
       await api.deleteDeviceImage(deviceId, imageId);
       setSuccess('Đã xóa hình ảnh thiết bị');
-      fetchDeviceDetail();
+      fetchImages();
     } catch (err: any) {
       setError(err.message || 'Không thể xóa hình ảnh');
     }
@@ -132,6 +215,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
     try {
       await api.setPrimaryDeviceImage(deviceId, imageId);
       setSuccess('Đã đặt làm hình ảnh đại diện chính');
+      fetchImages();
       fetchDeviceDetail();
     } catch (err: any) {
       setError(err.message || 'Không thể cập nhật ảnh đại diện');
@@ -329,7 +413,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
         {[
           { id: 'info', label: 'THÔNG TIN CHUNG', icon: <FileText className="w-4 h-4" /> },
           { id: 'location', label: 'VỊ TRÍ & GIS', icon: <MapPin className="w-4 h-4" /> },
-          { id: 'images', label: `HÌNH ẢNH (${device.images?.length || 0})`, icon: <Camera className="w-4 h-4" /> },
+          { id: 'images', label: `HÌNH ẢNH (${deviceImages !== null ? deviceImages.length : (device.images?.length || 0)})`, icon: <Camera className="w-4 h-4" /> },
           { id: 'status', label: 'TRẠNG THÁI & SCADA', icon: <Activity className="w-4 h-4" /> },
           { id: 'audit', label: 'LỊCH SỬ AUDIT', icon: <History className="w-4 h-4" /> },
           { id: 'future', label: 'GIAI ĐOẠN SAU', icon: <Clock className="w-4 h-4" /> }
@@ -493,10 +577,21 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
 
           {/* Location History Log Table */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800">
-              Nhật ký Lịch sử Thay đổi Vị trí Tọa độ
+            <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800 flex items-center justify-between">
+              <span>Nhật ký Lịch sử Thay đổi Vị trí Tọa độ</span>
+              {loadingLocation && (
+                <div className="flex items-center gap-1.5 text-blue-600 text-xs font-normal">
+                  <div className="animate-spin w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                  <span>Đang tải...</span>
+                </div>
+              )}
             </div>
-            {device.location_history && device.location_history.length > 0 ? (
+            {loadingLocation && locationHistory === null ? (
+              <div className="p-8 flex items-center justify-center text-slate-500 text-xs font-semibold">
+                <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
+                Đang tải dữ liệu vị trí...
+              </div>
+            ) : ((locationHistory && locationHistory.length > 0) || (device.location_history && device.location_history.length > 0)) ? (
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
@@ -507,7 +602,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {device.location_history.map(loc => (
+                  {(locationHistory || device.location_history || []).map(loc => (
                     <tr key={loc.id}>
                       <td className="p-3 whitespace-nowrap">
                         <div className="font-mono text-xs font-semibold text-slate-800">
@@ -545,128 +640,144 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
               Thư viện Hình ảnh Thực tế
             </h3>
 
-            {!isGuest() && (
-              <button
-                onClick={() => setAddImageModal(true)}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                Tải lên Ảnh Thiết bị
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {loadingImages && (
+                <div className="flex items-center gap-1.5 text-blue-600 text-xs font-normal mr-2">
+                  <div className="animate-spin w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                  <span>Đang tải ảnh...</span>
+                </div>
+              )}
+              {!isGuest() && (
+                <button
+                  onClick={() => setAddImageModal(true)}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tải lên Ảnh Thiết bị
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Primary Avatar Image Preview */}
-          {(!device.images || device.images.length === 0) && !device.primary_image ? (
-            <div className="bg-white p-12 rounded-xl border border-slate-200 text-center space-y-3 shadow-sm">
-              <Camera className="w-12 h-12 text-slate-300 mx-auto" />
-              <p className="text-sm font-bold text-slate-700">Chưa có hình ảnh thiết bị.</p>
-              <p className="text-xs text-slate-400">Thiết bị này chưa có ảnh đại diện hoặc thư viện ảnh hiện trường.</p>
+          {loadingImages && deviceImages === null ? (
+            <div className="p-12 flex items-center justify-center text-slate-500 text-xs font-semibold">
+              <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
+              Đang tải danh sách hình ảnh...
             </div>
           ) : (
-            <>
-              {device.primary_image && (
-                <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4 shadow-sm">
-                  <span className="text-xs font-bold text-slate-700 block">Ảnh Đại Diện Chính (Nhấp để phóng to):</span>
-                  <div 
-                    onClick={() => {
-                      setViewerIndex(0);
-                      setViewerOpen(true);
-                    }}
-                    className="w-full max-w-xl h-64 bg-slate-900 rounded-xl overflow-hidden relative cursor-pointer group shadow"
-                  >
-                    <img
-                      src={device.primary_image}
-                      alt={device.name}
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="bg-slate-900/80 text-white text-xs font-bold px-3 py-1.5 rounded-lg backdrop-blur">
-                        🔍 Nhấp để xem lớn
-                      </span>
-                    </div>
-                    <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded text-white text-xs font-bold">
-                      Ảnh Đại Diện Chính
-                    </div>
-                  </div>
+            (() => {
+              const currentList = deviceImages !== null ? deviceImages : (device.images || []);
+              return (!currentList || currentList.length === 0) && !device.primary_image ? (
+                <div className="bg-white p-12 rounded-xl border border-slate-200 text-center space-y-3 shadow-sm">
+                  <Camera className="w-12 h-12 text-slate-300 mx-auto" />
+                  <p className="text-sm font-bold text-slate-700">Chưa có hình ảnh thiết bị.</p>
+                  <p className="text-xs text-slate-400">Thiết bị này chưa có ảnh đại diện hoặc thư viện ảnh hiện trường.</p>
                 </div>
-              )}
-
-              {/* Gallery Grid */}
-              {device.images && device.images.length > 0 && (
-                <div className="space-y-3">
-                  <span className="text-xs font-bold text-slate-700 block">Thư Viện Ảnh Hiện Trường ({device.images.length}):</span>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {device.images.map((img, idx) => {
-                      // Calculate global index in allImages
-                      const globalIdx = device.primary_image ? idx + 1 : idx;
-                      return (
-                        <div key={img.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden group shadow-sm flex flex-col">
-                          <div 
-                            onClick={() => {
-                              setViewerIndex(globalIdx < allImages.length ? globalIdx : 0);
-                              setViewerOpen(true);
-                            }}
-                            className="h-40 bg-slate-800 relative cursor-pointer overflow-hidden"
-                          >
-                            <img 
-                              src={img.image_url} 
-                              alt={img.caption || device.name} 
-                              onError={(e) => {
-                                const target = e.target as HTMLElement;
-                                target.style.display = 'none';
-                              }}
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
-                            />
-                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <span className="bg-slate-900/80 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg backdrop-blur shadow">
-                                Phóng to
-                              </span>
-                            </div>
-                            {Boolean(img.is_primary) && (
-                              <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow">
-                                Ảnh Đại Diện
-                              </span>
-                            )}
-                          </div>
-                          <div className="p-3 text-xs space-y-2 flex-grow flex flex-col justify-between">
-                            <div>
-                              <p className="text-slate-600 font-medium truncate">{img.caption || 'Hình ảnh hiện trường'}</p>
-                              <p className="text-[10px] text-slate-400 font-mono">
-                                {formatDateTime(img.created_at, false)}
-                              </p>
-                            </div>
-
-                            {!isGuest() && (
-                              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                                {!Boolean(img.is_primary) && (
-                                  <button
-                                    onClick={() => handleSetPrimaryImage(img.id)}
-                                    className="text-[10px] text-blue-600 font-bold hover:underline"
-                                  >
-                                    Đặt đại diện
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleDeleteImage(img.id)}
-                                  className="text-red-500 hover:text-red-700 p-1"
-                                  title="Xóa ảnh"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
+              ) : (
+                <>
+                  {device.primary_image && (
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4 shadow-sm">
+                      <span className="text-xs font-bold text-slate-700 block">Ảnh Đại Diện Chính (Nhấp để phóng to):</span>
+                      <div 
+                        onClick={() => {
+                          setViewerIndex(0);
+                          setViewerOpen(true);
+                        }}
+                        className="w-full max-w-xl h-64 bg-slate-900 rounded-xl overflow-hidden relative cursor-pointer group shadow"
+                      >
+                        <img
+                          src={device.primary_image}
+                          alt={device.name}
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="bg-slate-900/80 text-white text-xs font-bold px-3 py-1.5 rounded-lg backdrop-blur">
+                            🔍 Nhấp để xem lớn
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
+                        <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded text-white text-xs font-bold">
+                          Ảnh Đại Diện Chính
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Gallery Grid */}
+                  {currentList && currentList.length > 0 && (
+                    <div className="space-y-3">
+                      <span className="text-xs font-bold text-slate-700 block">Thư Viện Ảnh Hiện Trường ({currentList.length}):</span>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {currentList.map((img, idx) => {
+                          const globalIdx = device.primary_image ? idx + 1 : idx;
+                          return (
+                            <div key={img.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden group shadow-sm flex flex-col">
+                              <div 
+                                onClick={() => {
+                                  setViewerIndex(globalIdx < allImages.length ? globalIdx : 0);
+                                  setViewerOpen(true);
+                                }}
+                                className="h-40 bg-slate-800 relative cursor-pointer overflow-hidden"
+                              >
+                                <img 
+                                  src={img.image_url} 
+                                  alt={img.caption || device.name} 
+                                  onError={(e) => {
+                                    const target = e.target as HTMLElement;
+                                    target.style.display = 'none';
+                                  }}
+                                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                                />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <span className="bg-slate-900/80 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg backdrop-blur shadow">
+                                    Phóng to
+                                  </span>
+                                </div>
+                                {Boolean(img.is_primary) && (
+                                  <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow">
+                                    Ảnh Đại Diện
+                                  </span>
+                                )}
+                              </div>
+                              <div className="p-3 text-xs space-y-2 flex-grow flex flex-col justify-between">
+                                <div>
+                                  <p className="text-slate-600 font-medium truncate">{img.caption || 'Hình ảnh hiện trường'}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono">
+                                    {formatDateTime(img.created_at, false)}
+                                  </p>
+                                </div>
+
+                                {!isGuest() && (
+                                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                                    {!Boolean(img.is_primary) && (
+                                      <button
+                                        onClick={() => handleSetPrimaryImage(img.id)}
+                                        className="text-[10px] text-blue-600 font-bold hover:underline"
+                                      >
+                                        Đặt đại diện
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleDeleteImage(img.id)}
+                                      className="text-red-500 hover:text-red-700 p-1"
+                                      title="Xóa ảnh"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()
           )}
 
           {/* ImageViewerModal Lightbox */}
@@ -802,10 +913,21 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
 
           {/* Status Change History Table */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800">
-              Nhật ký Lịch sử Đóng / Cắt & Tín hiệu SCADA
+            <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800 flex items-center justify-between">
+              <span>Nhật ký Lịch sử Đóng / Cắt & Tín hiệu SCADA</span>
+              {loadingStatus && (
+                <div className="flex items-center gap-1.5 text-blue-600 text-xs font-normal">
+                  <div className="animate-spin w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                  <span>Đang tải...</span>
+                </div>
+              )}
             </div>
-            {device.status_history && device.status_history.length > 0 ? (
+            {loadingStatus && statusHistory === null ? (
+              <div className="p-8 flex items-center justify-center text-slate-500 text-xs font-semibold">
+                <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
+                Đang tải lịch sử trạng thái...
+              </div>
+            ) : ((statusHistory && statusHistory.length > 0) || (device.status_history && device.status_history.length > 0)) ? (
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
@@ -817,7 +939,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {device.status_history.map(sh => (
+                  {(statusHistory || device.status_history || []).map(sh => (
                     <tr key={sh.id}>
                       <td className="p-3 whitespace-nowrap">
                         <div className="font-mono text-xs font-semibold text-slate-800">
@@ -852,11 +974,24 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
       {/* TAB CONTENT: AUDIT LOG */}
       {activeTab === 'audit' && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800 flex items-center gap-2">
-            <History className="w-4 h-4 text-blue-600" />
-            Lịch sử Thao tác & Audit Log Chi tiết Thiết bị
+          <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-blue-600" />
+              <span>Lịch sử Thao tác & Audit Log Chi tiết Thiết bị</span>
+            </div>
+            {loadingAudit && (
+              <div className="flex items-center gap-1.5 text-blue-600 text-xs font-normal">
+                <div className="animate-spin w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                <span>Đang tải...</span>
+              </div>
+            )}
           </div>
-          {device.audit_logs && device.audit_logs.length > 0 ? (
+          {loadingAudit && auditLogs === null ? (
+            <div className="p-8 flex items-center justify-center text-slate-500 text-xs font-semibold">
+              <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
+              Đang tải lịch sử audit...
+            </div>
+          ) : ((auditLogs && auditLogs.length > 0) || (device.audit_logs && device.audit_logs.length > 0)) ? (
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 uppercase text-[10px] font-bold">
@@ -868,7 +1003,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ deviceId, on
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {device.audit_logs.map(log => (
+                {(auditLogs || device.audit_logs || []).map(log => (
                   <tr key={log.id}>
                     <td className="p-3 whitespace-nowrap">
                       <div className="font-mono text-xs font-semibold text-slate-800">

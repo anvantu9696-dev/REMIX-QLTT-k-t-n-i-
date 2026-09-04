@@ -3,6 +3,8 @@ import { authenticateToken, requireRole, AuthenticatedRequest } from '../middlew
 import { deviceRepo } from '../repositories/firestore/deviceRepository';
 import { substationRepo } from '../repositories/firestore/substationRepository';
 import { feederRepo } from '../repositories/firestore/feederRepository';
+import { gridStructureRepo } from '../repositories/firestore/gridStructureRepository';
+import { dashboardStatsRepo } from '../repositories/firestore/dashboardStatsRepository';
 import { loopRepo } from '../repositories/firestore/loopRepository';
 import { recordAuditLog } from '../middleware';
 import { getTargetFirestore } from '../firebaseAdmin';
@@ -256,6 +258,7 @@ router.post('/confirm', requireRole(['ADMIN']), async (req: AuthenticatedRequest
     });
 
     await batch.commit();
+    await dashboardStatsRepo.bootstrapStats();
     await recordAuditLog(req.user!.id, req.user!.username, req.user!.full_name, 'IMPORT_CONFIRM', 'IMPORT', 'BATCH', 'Confirm import devices', 'SUCCESS', req.ip || '');
 
     return res.json({
@@ -311,6 +314,7 @@ router.post('/substations', requireRole(['ADMIN']), async (req: AuthenticatedReq
        }
     });
     await batch.commit();
+    await gridStructureRepo.rebuildGridStructure();
     return res.json({ success: true, report: { success_items: successItems } });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e.message });
@@ -360,6 +364,7 @@ router.post('/feeders', requireRole(['ADMIN']), async (req: AuthenticatedRequest
        }
     });
     await batch.commit();
+    await gridStructureRepo.rebuildGridStructure();
     return res.json({ success: true, report: { success_items: successItems } });
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e.message });

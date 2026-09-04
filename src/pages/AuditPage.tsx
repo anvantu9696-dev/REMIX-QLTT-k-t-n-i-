@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  ShieldAlert, Search, Filter, Calendar, RefreshCw,
-  CheckCircle2, XCircle, User, Globe, Database, Clock
+  ShieldAlert, Search, Filter, RefreshCw,
+  CheckCircle2, XCircle, User, Globe, Clock
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { AuditLog } from '../types';
@@ -10,27 +10,32 @@ import { formatDateTime, formatRelativeTime } from '../utils/dateTime';
 export const AuditPage: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [module, setModule] = useState('');
   const [result, setResult] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const fetchLogs = async () => {
     try {
       setLoading(true);
       const res = await api.getAuditLogs({
-        search,
-        module,
-        result,
-        limit: 100
+        limit: 20,
+        search: debouncedSearch || undefined,
+        module: module || undefined,
+        result: result || undefined
       });
       if (res.success) {
         setLogs(res.data);
-        setTotal(res.total);
+        setNextCursor(res.nextCursor || null);
       }
     } catch (err) {
       console.error(err);
@@ -41,11 +46,32 @@ export const AuditPage: React.FC = () => {
 
   useEffect(() => {
     fetchLogs();
-  }, [module, result]);
+  }, [debouncedSearch, module, result]);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchLogs();
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.getAuditLogs({
+        limit: 20,
+        search: debouncedSearch || undefined,
+        module: module || undefined,
+        result: result || undefined,
+        lastDocId: nextCursor
+      });
+      if (res.success) {
+        setLogs(prev => {
+          const existing = new Set(prev.map(l => l.id));
+          const newItems = res.data.filter((l: any) => !existing.has(l.id));
+          return [...prev, ...newItems];
+        });
+        setNextCursor(res.nextCursor || null);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   return (
@@ -58,7 +84,7 @@ export const AuditPage: React.FC = () => {
             Nhật Ký Audit System & An Ninh
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Ghi vết toàn bộ hành động người dùng, IP truy cập và lịch sử biến động hệ thống ({total} ghi nhận)
+            Ghi vết toàn bộ hành động người dùng, IP truy cập và lịch sử biến động hệ thống (Đang hiển thị {logs.length} bản ghi)
           </p>
         </div>
 
@@ -72,7 +98,7 @@ export const AuditPage: React.FC = () => {
       </div>
 
       {/* Filter Bar */}
-      <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs">
         <div className="relative md:col-span-2">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
@@ -96,6 +122,7 @@ export const AuditPage: React.FC = () => {
           <option value="LOOPS">LOOPS (Khép Vòng)</option>
           <option value="TASKS">TASKS (Giao Việc)</option>
           <option value="IMPORT">IMPORT (Nhập Excel)</option>
+          <option value="HE_THONG">HE_THONG (Hệ Thống)</option>
         </select>
 
         <select
@@ -109,12 +136,12 @@ export const AuditPage: React.FC = () => {
         </select>
 
         <button
-          type="submit"
-          className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl transition-all shadow"
+          onClick={() => { setSearch(''); setModule(''); setResult(''); }}
+          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all"
         >
-          Tra Cứu Audit
+          Xóa Bộ Lọc
         </button>
-      </form>
+      </div>
 
       {/* Audit Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
@@ -123,10 +150,10 @@ export const AuditPage: React.FC = () => {
         ) : logs.length === 0 ? (
           <div className="p-12 text-center text-xs text-slate-400">Không tìm thấy nhật ký audit phù hợp</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-semibold">
+                <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-semibold sticky top-0 z-10">
                   <th className="p-3.5">Thời Gian</th>
                   <th className="p-3.5">Người Thực Hiện</th>
                   <th className="p-3.5">Hành Động</th>
@@ -194,6 +221,29 @@ export const AuditPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Load More Button */}
+      {nextCursor && (
+        <div className="flex justify-center pt-2 pb-6">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-6 py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-sky-600 dark:text-sky-400 font-bold text-xs rounded-xl border border-sky-200 dark:border-sky-800 shadow-sm flex items-center space-x-2 transition-all disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Đang tải thêm...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Tải thêm nhật ký (Xem thêm 20 bản ghi)</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building2,
   Plus,
@@ -17,6 +17,7 @@ import {
 import { api } from '../lib/api';
 import { Substation } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import { useRealtimeSync } from '../lib/realtime';
 
 interface SubstationsPageProps {
@@ -25,8 +26,16 @@ interface SubstationsPageProps {
 
 export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFeeders }) => {
   const { isGuest, hasRole } = useAuth();
-  const [substations, setSubstations] = useState<Substation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    substations,
+    loadingSubstations,
+    fetchSubstations,
+    addSubstationInCache,
+    updateSubstationInCache,
+    deleteSubstationFromCache
+  } = useDataContext();
+
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [error, setError] = useState('');
@@ -61,38 +70,25 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
 
   useEffect(() => {
     fetchSubstations();
-  }, [search, statusFilter]);
+  }, [fetchSubstations]);
 
   useRealtimeSync(() => {
-    fetchSubstations();
+    fetchSubstations(true);
   });
 
-
-  const handleRefreshData = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getSubstations(undefined, { forceRefresh: true });
-      if (res.success) {
-        setSubstations(res.data);
+  const filteredSubstations = useMemo(() => {
+    return substations.filter(station => {
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        const matchCode = station.substation_code?.toLowerCase().includes(q);
+        const matchName = station.name?.toLowerCase().includes(q);
+        const matchAddress = station.address?.toLowerCase().includes(q);
+        if (!matchCode && !matchName && !matchAddress) return false;
       }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSubstations = async (options?: {forceRefresh?: boolean}) => {
-    setLoading(true);
-    try {
-      const res = await api.getSubstations({ search, status: statusFilter }, options);
-      if (res.success) {
-        setSubstations(res.data);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Không thể tải danh sách Trạm 110kV');
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (statusFilter && station.status !== statusFilter) return false;
+      return true;
+    });
+  }, [substations, search, statusFilter]);
 
   const handleOpenAddModal = () => {
     if (isGuest()) return;
@@ -142,14 +138,20 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
     setSubmitting(true);
     try {
       if (editingStation) {
-        await api.updateSubstation(editingStation.id, formData);
+        const res = await api.updateSubstation(editingStation.id, formData, undefined, editingStation.version);
         setSuccess(`Cập nhật thành công Trạm ${formData.name}`);
+        const updated = res.data ? res.data : { ...editingStation, ...formData };
+        updateSubstationInCache(editingStation.id, updated);
       } else {
-        await api.createSubstation(formData);
+        const res = await api.createSubstation(formData);
         setSuccess(`Thêm mới thành công Trạm ${formData.name}`);
+        if (res.data) {
+          addSubstationInCache(res.data);
+        } else {
+          addSubstationInCache({ id: Date.now(), ...formData } as any);
+        }
       }
       setModalOpen(false);
-      fetchSubstations();
     } catch (err: any) {
       setFormError(err.message || 'Lỗi khi lưu thông tin Trạm 110kV');
     } finally {
@@ -176,8 +178,8 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
       const res: any = await api.deleteSubstation(deletingStation.id);
       setSuccess(res.message || `Đã xóa mềm Trạm 110kV ${deletingStation.name}`);
       setDeleteModalOpen(false);
+      deleteSubstationFromCache(deletingStation.id);
       setDeletingStation(null);
-      fetchSubstations();
     } catch (err: any) {
       setDeleteError(err.message || 'Không thể xóa Trạm 110kV');
       if (err.usage) {
@@ -289,19 +291,19 @@ export const SubstationsPage: React.FC<SubstationsPageProps> = ({ onNavigateToFe
       </div>
 
       {/* Substations Cards Grid */}
-      {loading ? (
+      {loadingSubstations ? (
         <div className="py-12 flex justify-center text-slate-500 text-xs font-medium">
           <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
           Đang tải dữ liệu Trạm 110kV...
         </div>
-      ) : substations.length === 0 ? (
+      ) : filteredSubstations.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
           <Building2 className="w-10 h-10 mx-auto text-slate-300 mb-2" />
           <p className="text-xs font-semibold">Không tìm thấy trạm 110kV nào phù hợp</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {substations.map(station => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+          {filteredSubstations.map(station => (
             <div
               key={station.id}
               className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col justify-between"

@@ -38,6 +38,7 @@ import { SearchableSelect } from '../components/SearchableSelect';
 import { api } from '../lib/api';
 import { normalizeLoop } from '../lib/loopUtils';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import { validateTopology, TopologyValidationReport } from '../lib/topologyValidator';
 import { TopologyDiagnosticsModal } from '../components/topology/TopologyDiagnosticsModal';
 import { useRealtimeSync } from '../lib/realtime';
@@ -48,12 +49,10 @@ export const LoopsPage: React.FC = () => {
     window.dispatchEvent(new Event('popstate'));
   };
   const { hasRole, isGuest, user } = useAuth();
+  const { devices, substations, feeders, fetchSubstations, fetchFeeders, fetchDevices } = useDataContext();
   const isAdmin = user?.roles?.includes('ADMIN') || hasRole('ADMIN');
 
   const [loops, setLoops] = useState<Loop[]>([]);
-  const [substations, setSubstations] = useState<Substation[]>([]);
-  const [feeders, setFeeders] = useState<Feeder[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -305,91 +304,51 @@ export const LoopsPage: React.FC = () => {
     setIsDiagnosticsModalOpen(true);
   };
 
-  const fetchMasterData = async () => {
-    try {
-      const [subsRes, devRes, feedRes] = await Promise.all([
-        api.getSubstations(),
-        api.getDevices({ limit: 500 }),
-        api.getFeeders()
-      ]);
-      if (subsRes.success) setSubstations(subsRes.data);
-      if (devRes.success) setDevices(devRes.data);
-      if (feedRes.success) setFeeders(feedRes.data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    fetchMasterData();
-  }, []);
-
   useEffect(() => {
     fetchLoopsData();
   }, [searchTerm, statusFilter, substationFilter]);
 
   useRealtimeSync(() => {
     fetchLoopsData();
-    fetchMasterData();
   });
 
   // Handle Station A selection change
-  const handleSubstationAChange = async (subId: string) => {
+  const handleSubstationAChange = (subId: string) => {
     setFormError(null);
     setFormData(prev => ({ ...prev, substation_id_a: subId, feeder_id_a: '', device_id_a: '' }));
     if (subId) {
-      const res = await api.getFeeders({ substation_id: subId });
-      if (res.success) setFeederListA(res.data.filter((f: any) => f.status !== 'INACTIVE'));
+      setFeederListA(feeders.filter(f => String(f.substation_id) === String(subId) && f.status !== 'INACTIVE'));
     } else {
       setFeederListA([]);
     }
   };
 
-  const handleFeederAChange = async (feederId: string) => {
+  const handleFeederAChange = (feederId: string) => {
     setFormError(null);
     setFormData(prev => ({ ...prev, feeder_id_a: feederId, device_id_a: '' }));
     if (feederId) {
-      try {
-        const res = await api.getDevices({ feeder_id: feederId, limit: 500 });
-        if (res.success) {
-          setDeviceListA(res.data.filter((d: any) => d.status !== 'INACTIVE'));
-        } else {
-          setDeviceListA(devices.filter(d => String(d.feeder_id) === String(feederId) && d.status !== 'INACTIVE'));
-        }
-      } catch (e) {
-        setDeviceListA(devices.filter(d => String(d.feeder_id) === String(feederId) && d.status !== 'INACTIVE'));
-      }
+      setDeviceListA(devices.filter(d => String(d.feeder_id) === String(feederId) && d.status !== 'INACTIVE'));
     } else {
       setDeviceListA([]);
     }
   };
 
   // Handle Station B selection change
-  const handleSubstationBChange = async (subId: string) => {
+  const handleSubstationBChange = (subId: string) => {
     setFormError(null);
     setFormData(prev => ({ ...prev, substation_id_b: subId, feeder_id_b: '', device_id_b: '' }));
     if (subId) {
-      const res = await api.getFeeders({ substation_id: subId });
-      if (res.success) setFeederListB(res.data.filter((f: any) => f.status !== 'INACTIVE'));
+      setFeederListB(feeders.filter(f => String(f.substation_id) === String(subId) && f.status !== 'INACTIVE'));
     } else {
       setFeederListB([]);
     }
   };
 
-  const handleFeederBChange = async (feederId: string) => {
+  const handleFeederBChange = (feederId: string) => {
     setFormError(null);
     setFormData(prev => ({ ...prev, feeder_id_b: feederId, device_id_b: '' }));
     if (feederId) {
-      try {
-        const res = await api.getDevices({ feeder_id: feederId, limit: 500 });
-        if (res.success) {
-          setDeviceListB(res.data.filter((d: any) => d.status !== 'INACTIVE'));
-        } else {
-          setDeviceListB(devices.filter(d => String(d.feeder_id) === String(feederId) && d.status !== 'INACTIVE'));
-        }
-      } catch (e) {
-        setDeviceListB(devices.filter(d => String(d.feeder_id) === String(feederId) && d.status !== 'INACTIVE'));
-      }
+      setDeviceListB(devices.filter(d => String(d.feeder_id) === String(feederId) && d.status !== 'INACTIVE'));
     } else {
       setDeviceListB([]);
     }
@@ -424,7 +383,7 @@ export const LoopsPage: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = async (loop: Loop) => {
+  const handleOpenEditModal = (loop: Loop) => {
     setEditingLoop(loop);
     setFormError(null);
     setFormData({
@@ -448,20 +407,16 @@ export const LoopsPage: React.FC = () => {
     });
 
     if (loop.substation_id_a) {
-      const res = await api.getFeeders({ substation_id: String(loop.substation_id_a) });
-      if (res.success) setFeederListA(res.data.filter((f: any) => f.status !== 'INACTIVE'));
+      setFeederListA(feeders.filter(f => String(f.substation_id) === String(loop.substation_id_a) && f.status !== 'INACTIVE'));
     }
     if (loop.feeder_id_a) {
-      const res = await api.getDevices({ feeder_id: String(loop.feeder_id_a), limit: 500 });
-      if (res.success) setDeviceListA(res.data.filter((d: any) => d.status !== 'INACTIVE'));
+      setDeviceListA(devices.filter(d => String(d.feeder_id) === String(loop.feeder_id_a) && d.status !== 'INACTIVE'));
     }
     if (loop.substation_id_b) {
-      const res = await api.getFeeders({ substation_id: String(loop.substation_id_b) });
-      if (res.success) setFeederListB(res.data.filter((f: any) => f.status !== 'INACTIVE'));
+      setFeederListB(feeders.filter(f => String(f.substation_id) === String(loop.substation_id_b) && f.status !== 'INACTIVE'));
     }
     if (loop.feeder_id_b) {
-      const res = await api.getDevices({ feeder_id: String(loop.feeder_id_b), limit: 500 });
-      if (res.success) setDeviceListB(res.data.filter((d: any) => d.status !== 'INACTIVE'));
+      setDeviceListB(devices.filter(d => String(d.feeder_id) === String(loop.feeder_id_b) && d.status !== 'INACTIVE'));
     }
 
     setIsModalOpen(true);
@@ -829,7 +784,7 @@ export const LoopsPage: React.FC = () => {
                                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
                                 : 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 animate-pulse'
                             }`}
-                            title="Bấm để kiểm tra chi tiết cấu trúc Topology 7 nút"
+                            title="Bấm để kiểm tra chi tiết cấu trúc Topology Khép vòng"
                           >
                             {report.isValid ? (
                               <>

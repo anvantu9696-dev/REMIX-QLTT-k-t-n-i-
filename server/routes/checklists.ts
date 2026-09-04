@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken, AuthenticatedRequest, denyGuestMutations, requireRole } from '../middleware.js';
 import { getTargetFirestore } from '../firebaseAdmin.js';
+import { broadcastRealtimeEvent } from '../events.js';
 
 export const EVN_STANDARD_TEMPLATES = [
   {
@@ -63,6 +64,7 @@ export async function ensureEVNChecklists() {
         is_template: 1,
         created_by: 'EVN_STANDARDS',
         deleted_at: null,
+        isDeleted: false,
         items: tpl.items
       });
     }
@@ -88,7 +90,8 @@ router.get('/', async (req: AuthenticatedRequest, res) => {
       query = query.where('target_device_type', '==', target_device_type);
     }
 
-    const snapshot = await query.get();
+    const parsedLimit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const snapshot = await query.limit(parsedLimit).get();
     let templates = snapshot.docs.map(doc => {
       const data = doc.data();
       return { id: doc.id, ...data, item_count: (data.items || []).length };
@@ -116,6 +119,7 @@ router.get('/presets', (req, res) => {
 // POST /api/checklists/sync-evn
 router.post('/sync-evn', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
   await ensureEVNChecklists();
+  broadcastRealtimeEvent({ type: 'UPDATE', entity: 'CHECKLIST', action: 'SYNC_EVN' });
   res.json({ success: true, message: 'Đã đồng bộ mẫu EVN chuẩn' });
 });
 
@@ -137,6 +141,7 @@ router.post('/', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedReq
       is_template: 1,
       created_by: req.user?.username || 'unknown',
       deleted_at: null,
+      isDeleted: false,
       items: (items || []).map((itm: any, idx: number) => ({
         order: idx + 1,
         code: `ITM-${idx+1}`,
@@ -148,6 +153,7 @@ router.post('/', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedReq
     };
     
     await db.collection('checklists').doc(code).set(checklistData);
+    broadcastRealtimeEvent({ type: 'CREATE', entity: 'CHECKLIST', action: 'CREATE', id: code, data: checklistData });
     res.json({ success: true, message: 'Tạo mẫu thành công' });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });
@@ -161,7 +167,7 @@ router.patch('/:id', requireRole(['ADMIN', 'MANAGER']), async (req: Authenticate
   try {
     const db = getTargetFirestore();
     const updateData: any = {
-      title, category, description, version, target_device_type
+      title, category, description, version, target_device_type, updated_at: new Date().toISOString()
     };
     if (items && Array.isArray(items)) {
       updateData.items = items.map((itm: any, idx: number) => ({
@@ -175,6 +181,7 @@ router.patch('/:id', requireRole(['ADMIN', 'MANAGER']), async (req: Authenticate
     }
     
     await db.collection('checklists').doc(id).update(updateData);
+    broadcastRealtimeEvent({ type: 'UPDATE', entity: 'CHECKLIST', action: 'UPDATE', id, data: updateData });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });
@@ -186,8 +193,10 @@ router.delete('/:id', requireRole(['ADMIN', 'MANAGER']), async (req: Authenticat
   try {
     const db = getTargetFirestore();
     await db.collection('checklists').doc(req.params.id).update({
-      deleted_at: new Date().toISOString()
+      deleted_at: new Date().toISOString(),
+      isDeleted: true
     });
+    broadcastRealtimeEvent({ type: 'DELETE', entity: 'CHECKLIST', action: 'DELETE', id: req.params.id });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });

@@ -4,7 +4,9 @@ import { authenticateToken, requireRole } from '../middleware';
 import { deviceRepo } from '../repositories/firestore/deviceRepository';
 import { substationRepo } from '../repositories/firestore/substationRepository';
 import { feederRepo } from '../repositories/firestore/feederRepository';
+import { gridStructureRepo } from '../repositories/firestore/gridStructureRepository';
 import { getTargetFirestore } from '../firebaseAdmin';
+import { clearAllCache } from '../utils/firestoreCache';
 
 const router = Router();
 
@@ -105,10 +107,7 @@ router.post('/migrate-relations', authenticateToken, requireRole(['ADMIN']), asy
                 await b.commit();
             }
             // Clear cache
-            const { clearAllCache } = require('../../src/lib/idbCache');
-            if (typeof clearAllCache === 'function') {
-                try { await clearAllCache(); } catch(e) {}
-            }
+            clearAllCache();
         }
 
         res.json({
@@ -121,6 +120,106 @@ router.post('/migrate-relations', authenticateToken, requireRole(['ADMIN']), asy
             }
         });
 
+    } catch (e: any) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+router.post('/backfill-feeders', authenticateToken, requireRole(['ADMIN']), async (req: any, res: any) => {
+    try {
+        const db = getTargetFirestore();
+        const [subSnap, feederSnap] = await Promise.all([
+            db.collection('substations').get(),
+            db.collection('feeders').get()
+        ]);
+
+        const subById = new Map<string, any>();
+        const subByCode = new Map<string, string>();
+
+        for (const doc of subSnap.docs) {
+            const data = doc.data();
+            subById.set(doc.id, data);
+            const code = String(data.substation_code || data.code || '').trim().toUpperCase();
+            if (code) subByCode.set(code, doc.id);
+        }
+
+        let updatedCount = 0;
+        let batch = db.batch();
+        let count = 0;
+
+        for (const doc of feederSnap.docs) {
+            const data = doc.data();
+            let needsUpdate = false;
+            const updates: Record<string, any> = {};
+
+            const hasExplicitDeleted = Boolean(data.deleted_at || data.deletedAt);
+            if (data.isDeleted === undefined || data.isDeleted === null) {
+                updates.isDeleted = hasExplicitDeleted;
+                updates.deleted_at = data.deleted_at || (hasExplicitDeleted ? new Date() : null);
+                needsUpdate = true;
+            }
+
+            const feederCode = String(data.feeder_code || data.code || doc.id).trim();
+            if (!data.feeder_code || data.feeder_code !== feederCode) {
+                updates.feeder_code = feederCode;
+                needsUpdate = true;
+            }
+
+            if (data.substation_id !== undefined && data.substation_id !== null) {
+                const rawSubIdStr = String(data.substation_id).trim();
+                let targetSubId = rawSubIdStr;
+                if (!subById.has(rawSubIdStr)) {
+                    const matchedIdByCode = subByCode.get(rawSubIdStr.toUpperCase());
+                    if (matchedIdByCode) targetSubId = matchedIdByCode;
+                }
+                if (typeof data.substation_id !== 'string' || data.substation_id !== targetSubId) {
+                    updates.substation_id = String(targetSubId);
+                    needsUpdate = true;
+                }
+            } else {
+                updates.substation_id = '';
+                needsUpdate = true;
+            }
+
+            if (data.version === undefined || data.version === null) {
+                updates.version = 1;
+                needsUpdate = true;
+            }
+
+            if (!data.status) {
+                updates.status = 'ACTIVE';
+                needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+                updates.updatedAt = new Date();
+                batch.update(doc.ref, updates);
+                count++;
+                updatedCount++;
+                if (count >= 400) {
+                    await batch.commit();
+                    batch = db.batch();
+                    count = 0;
+                }
+            }
+        }
+
+        if (count > 0) {
+            await batch.commit();
+        }
+
+        clearAllCache();
+        const bundle = await gridStructureRepo.rebuildGridStructure();
+
+        res.json({
+            success: true,
+            message: `Đã hoàn tất backfill phát tuyến: Quét ${feederSnap.size} tuyến, cập nhật ${updatedCount} bản ghi.`,
+            stats: {
+                total_feeders: bundle.feeders.length,
+                total_substations: bundle.substations.length,
+                updated: updatedCount
+            }
+        });
     } catch (e: any) {
         res.status(500).json({ success: false, message: e.message });
     }

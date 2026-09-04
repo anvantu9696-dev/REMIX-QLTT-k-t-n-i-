@@ -93,24 +93,21 @@ router.get('/', authenticateToken, validatePayload, async (req: AuthenticatedReq
       pole_number,
       sortBy,
       sortOrder,
-      lastDocId
+      lastDocId,
+      updated_after
     } = req.query;
     
-    const limit = Number(req.query.limit) || 10;
+    const limit = req.query.limit ? Number(req.query.limit) : 50;
 
-    
-        const devices = await deviceRepo.list({
-              limit: Number(req.query.limit) || 10,
-              substation_id: substation_id ? (substation_id as string) : undefined,
-              feeder_id: feeder_id ? (feeder_id as string) : undefined,
-              device_type: device_type ? (device_type as string) : undefined,
-              status: status ? (status as string) : undefined,
-              lastDocId: lastDocId ? (lastDocId as string) : undefined
-        });
+    // 1. Incremental / Delta Sync flow if updated_after is provided
+    if (updated_after) {
+      try {
+        const delta = await deviceRepo.listDelta(updated_after as string);
 
-        // Lấy danh sách ID trạm/phát tuyến CẦN FETCH (nếu document chưa được chuẩn hóa)
-        const subIdsToFetch = Array.from(new Set(devices.filter(d => !d.substation_name).map(d => String(d.substation_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
-        const feederIdsToFetch = Array.from(new Set(devices.filter(d => !d.feeder_name).map(d => String(d.feeder_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
+        // Fetch relation metadata only for active (non-deleted) devices
+        const activeChanged = delta.devices.filter(d => !d.isDeleted);
+        const subIdsToFetch = Array.from(new Set(activeChanged.filter(d => !d.substation_name).map(d => String(d.substation_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
+        const feederIdsToFetch = Array.from(new Set(activeChanged.filter(d => !d.feeder_name).map(d => String(d.feeder_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
         
         const substations = await Promise.all(subIdsToFetch.map(id => substationRepo.getById(id)));
         const feeders = await Promise.all(feederIdsToFetch.map(id => feederRepo.getById(id)));
@@ -118,83 +115,168 @@ router.get('/', authenticateToken, validatePayload, async (req: AuthenticatedReq
         const subMap = new Map(substations.filter(s => s).map(s => [String(s!.id), s]));
         const feederMap = new Map(feeders.filter(f => f).map(f => [String(f!.id), f]));
 
-        let enrichedDevices = devices.map(d => {
-            const sub = subMap.get(String(d.substation_id));
-            const feeder = feederMap.get(String(d.feeder_id));
-            return {
-                ...d,
-                substation_name: d.substation_name || (sub ? sub.name : null),
-                substation_code: d.substation_code || (sub ? sub.substation_code : null),
-                feeder_name: d.feeder_name || (feeder ? feeder.name : null),
-                feeder_code: d.feeder_code || (feeder ? feeder.feeder_code : null),
-                device_type: d.device_type === 'RCL' ? 'REC' : d.device_type
-            };
+        const enrichedDevices = delta.devices.map(d => {
+          if (d.isDeleted) return d;
+          const sub = subMap.get(String(d.substation_id));
+          const feeder = feederMap.get(String(d.feeder_id));
+          return {
+            ...d,
+            substation_name: d.substation_name || (sub ? sub.name : null),
+            substation_code: d.substation_code || (sub ? sub.substation_code : null),
+            feeder_name: d.feeder_name || (feeder ? feeder.name : null),
+            feeder_code: d.feeder_code || (feeder ? feeder.feeder_code : null),
+            device_type: d.device_type === 'RCL' ? 'REC' : d.device_type
+          };
         });
 
-        if (switch_status) {
-            // @ts-ignore
-            enrichedDevices = enrichedDevices.filter(d => String(d.switch_status) === String(switch_status));
-        }
-        if (scada_status) {
-            // @ts-ignore
-            enrichedDevices = enrichedDevices.filter(d => String(d.scada_status) === String(scada_status));
-        }
-        if (pole_number) {
-            const pn = pole_number.toString().toLowerCase();
-            enrichedDevices = enrichedDevices.filter(d => d.pole_number && String(d.pole_number).toLowerCase().includes(pn));
-        }
-        if (search) {
-            const q = search.toString().toLowerCase();
-            enrichedDevices = enrichedDevices.filter(d => 
-                (d.device_id && String(d.device_id).toLowerCase().includes(q)) ||
-                (d.device_code && String(d.device_code).toLowerCase().includes(q)) ||
-                (d.name && String(d.name).toLowerCase().includes(q)) ||
-                (d.pole_number && String(d.pole_number).toLowerCase().includes(q)) ||
-                (d.notes && String(d.notes).toLowerCase().includes(q))
-            );
-        }
-
-        return res.json({ 
-            success: true, 
-            data: enrichedDevices,
-            nextCursor: enrichedDevices.length > 0 ? enrichedDevices[enrichedDevices.length - 1].id : null
+        res.setHeader('X-Last-Sync-Timestamp', delta.last_sync_timestamp);
+        return res.json({
+          success: true,
+          data: enrichedDevices,
+          last_sync_timestamp: delta.last_sync_timestamp,
+          is_delta: true,
+          count: enrichedDevices.length
         });
+      } catch (deltaErr: any) {
+        console.warn('[devices.ts] Delta sync failed, falling back to full sync:', deltaErr.message);
+        // Fall back to standard full query below
+      }
+    }
+
+    // 2. Full Query
+    const devices = await deviceRepo.list({
+      limit,
+      substation_id: substation_id ? (substation_id as string) : undefined,
+      feeder_id: feeder_id ? (feeder_id as string) : undefined,
+      device_type: device_type ? (device_type as string) : undefined,
+      status: status ? (status as string) : undefined,
+      lastDocId: lastDocId ? (lastDocId as string) : undefined
+    });
+
+    // Lấy danh sách ID trạm/phát tuyến CẦN FETCH (nếu document chưa được chuẩn hóa)
+    const subIdsToFetch: string[] = Array.from(new Set(devices.filter(d => !d.substation_name).map(d => String(d.substation_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
+    const feederIdsToFetch: string[] = Array.from(new Set(devices.filter(d => !d.feeder_name).map(d => String(d.feeder_id)).filter(id => id && id !== 'undefined' && id !== 'null')));
+    
+    const substations = await Promise.all(subIdsToFetch.map((id: string) => substationRepo.getById(id)));
+    const feeders = await Promise.all(feederIdsToFetch.map((id: string) => feederRepo.getById(id)));
+    
+    const subMap = new Map(substations.filter(s => s).map(s => [String(s!.id), s]));
+    const feederMap = new Map(feeders.filter(f => f).map(f => [String(f!.id), f]));
+
+    let enrichedDevices = devices.map(d => {
+        const sub = subMap.get(String(d.substation_id));
+        const feeder = feederMap.get(String(d.feeder_id));
+        return {
+            ...d,
+            substation_name: d.substation_name || (sub ? sub.name : null),
+            substation_code: d.substation_code || (sub ? sub.substation_code : null),
+            feeder_name: d.feeder_name || (feeder ? feeder.name : null),
+            feeder_code: d.feeder_code || (feeder ? feeder.feeder_code : null),
+            device_type: d.device_type === 'RCL' ? 'REC' : d.device_type
+        };
+    });
+
+    if (switch_status) {
+        // @ts-ignore
+        enrichedDevices = enrichedDevices.filter(d => String(d.switch_status) === String(switch_status));
+    }
+    if (scada_status) {
+        // @ts-ignore
+        enrichedDevices = enrichedDevices.filter(d => String(d.scada_status) === String(scada_status));
+    }
+    if (pole_number) {
+        const pn = pole_number.toString().toLowerCase();
+        enrichedDevices = enrichedDevices.filter(d => d.pole_number && String(d.pole_number).toLowerCase().includes(pn));
+    }
+    if (search) {
+        const q = search.toString().toLowerCase();
+        enrichedDevices = enrichedDevices.filter(d => 
+            (d.device_id && String(d.device_id).toLowerCase().includes(q)) ||
+            (d.device_code && String(d.device_code).toLowerCase().includes(q)) ||
+            (d.name && String(d.name).toLowerCase().includes(q)) ||
+            (d.pole_number && String(d.pole_number).toLowerCase().includes(q)) ||
+            (d.notes && String(d.notes).toLowerCase().includes(q))
+        );
+    }
+
+    const nowIso = new Date().toISOString();
+    res.setHeader('X-Last-Sync-Timestamp', nowIso);
+    return res.json({ 
+        success: true, 
+        data: enrichedDevices,
+        last_sync_timestamp: nowIso,
+        is_delta: false,
+        nextCursor: enrichedDevices.length > 0 ? enrichedDevices[enrichedDevices.length - 1].id : null
+    });
     } catch (err: any) {
     console.error('Error fetching devices:', err);
     return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh sách thiết bị' });
   }
 });
 
-// 3. Get Single Device Details (with Images, Location History, Status History, Audit Logs)
+// 3. Get Single Device Details (Lazy-loaded: images, locations, history are fetched via sub-endpoints)
 router.get('/:id', authenticateToken, validatePayload, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
 
-    
-        const device = await deviceRepo.getById(id);
-        if (!device) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin thiết bị' });
-        }
-        const [sub, feeder, images, locationHistory] = await Promise.all([
-            device.substation_id ? substationRepo.getById(String(device.substation_id)) : Promise.resolve(null),
-            device.feeder_id ? feederRepo.getById(String(device.feeder_id)) : Promise.resolve(null),
-            deviceImageRepo.getByDeviceId(id),
-            deviceLocationRepo.getByDeviceId(id)
-        ]);
-        return res.json({
-            success: true,
-            data: {
-                ...device,
-                substation_name: sub ? sub.name : null,
-                substation_code: sub ? sub.substation_code : null,
-                feeder_name: feeder ? feeder.name : null,
-                feeder_code: feeder ? feeder.feeder_code : null,
-                images,
-                locationHistory
-            }
-        });
-    } catch (err: any) {
+    const device = await deviceRepo.getById(id);
+    if (!device) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin thiết bị' });
+    }
+    const [sub, feeder] = await Promise.all([
+      device.substation_id ? substationRepo.getById(String(device.substation_id)) : Promise.resolve(null),
+      device.feeder_id ? feederRepo.getById(String(device.feeder_id)) : Promise.resolve(null)
+    ]);
+    return res.json({
+      success: true,
+      data: {
+        ...device,
+        substation_name: device.substation_name || (sub ? sub.name : null),
+        substation_code: device.substation_code || (sub ? sub.substation_code : null),
+        feeder_name: device.feeder_name || (feeder ? feeder.name : null),
+        feeder_code: device.feeder_code || (feeder ? feeder.feeder_code : null)
+      }
+    });
+  } catch (err: any) {
     return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xem chi tiết thiết bị' });
+  }
+});
+
+// 3.1 Get Device Location History (Lazy-loaded, max 20)
+router.get('/:id/locations', authenticateToken, validatePayload, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 20), 50);
+    const locations = await deviceLocationRepo.getByDeviceId(id, limit);
+    return res.json({ success: true, data: locations });
+  } catch (err: any) {
+    console.error('Error fetching device locations:', err);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy lịch sử vị trí' });
+  }
+});
+
+// 3.2 Get Device Status & SCADA History (Lazy-loaded, max 20)
+router.get('/:id/history', authenticateToken, validatePayload, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 20), 50);
+    const history = await deviceStatusHistoryRepo.getByDeviceId(id, limit);
+    return res.json({ success: true, data: history });
+  } catch (err: any) {
+    console.error('Error fetching device status history:', err);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy lịch sử trạng thái' });
+  }
+});
+
+// 3.3 Get Device Images (Lazy-loaded)
+router.get('/:id/images', authenticateToken, validatePayload, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const images = await deviceImageRepo.getByDeviceId(id);
+    return res.json({ success: true, data: images });
+  } catch (err: any) {
+    console.error('Error fetching device images:', err);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy hình ảnh thiết bị' });
   }
 });
 
@@ -303,7 +385,7 @@ router.put(
       } = req.body;
 
       if (!operationId) return res.status(400).json({ success: false, code: 'OPERATION_ID_REQUIRED' });
-      if (expectedVersion === undefined) return res.status(400).json({ success: false, code: 'EXPECTED_VERSION_REQUIRED' });
+      
 
       
           const device = await deviceRepo.getById(id);
@@ -340,7 +422,7 @@ router.put(
                   battery_status: req.body.battery_status || device.battery_status,
                   settings: req.body.settings || device.settings,
                   updatedBy: req.user?.username || 'SYSTEM'
-              }, expectedVersion, operationId);
+              }, expectedVersion === undefined ? 1 : expectedVersion, operationId);
 
               // Log status/location history here if needed, in a real scenario this would be in a transaction
               

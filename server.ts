@@ -51,11 +51,24 @@ async function startServer() {
     next();
   });
 
-  // API Routes
+  // API Routes Cache Headers
   app.use('/api', (req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+    const method = req.method.toUpperCase();
+    const url = req.originalUrl || req.url;
+
+    const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+    const isAuth = url.startsWith('/api/auth');
+
+    const staticRoutes = ['/api/substations', '/api/feeders', '/api/roles', '/api/guides'];
+    const isStaticGet = method === 'GET' && staticRoutes.some(r => url === r || url.startsWith(`${r}/`) || url.startsWith(`${r}?`));
+
+    if (isStaticGet && !isMutation && !isAuth) {
+      res.setHeader('Cache-Control', 'private, max-age=120, stale-while-revalidate=600');
+    } else {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
     next();
   });
   app.use('/api/health', healthRoutes);

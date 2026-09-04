@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getTargetFirestore } from '../firebaseAdmin';
 import { loopRepo } from '../repositories/firestore/loopRepository';
 import { topologyVersionRepo } from '../repositories/firestore/topologyVersionRepository';
@@ -224,9 +225,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const versionIdParam = req.query.version_id;
 
-    
-        const loop = await loopRepo.getById(id);
-        if (!loop || loop.isDeleted) return res.status(404).json({ success: false, message: 'Khép vòng không tồn tại' });
+    const loop = await loopRepo.getById(id);
+    if (!loop || loop.isDeleted) {
+      return res.json({
+        success: false,
+        message: 'Chưa có dữ liệu mạch khép vòng nào trong hệ thống.',
+        data: { loop: null, active_version: null, versions: [], nodes: [], edges: [], pending_request: null }
+      });
+    }
 
         const [subs, feeders, devices] = await Promise.all([
             substationRepo.list(),
@@ -485,12 +491,13 @@ router.delete('/:id', authenticateToken, denyGuestMutations, requireRole(['ADMIN
 });
 
 // POST /api/loops/:id/versions - Create/Save a new topology version
-router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), (req: AuthenticatedRequest, res) => {
+
+router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { nodes, edges, change_summary, reason, submit_for_approval = false } = req.body;
 
-    const loop = findLoop(id);
+    const loop = await loopRepo.getById(id);
     if (!loop) {
       return res.status(404).json({ success: false, message: 'Khép vòng không tồn tại' });
     }
@@ -498,7 +505,7 @@ router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(
     if (!Array.isArray(nodes)) {
       return res.status(400).json({ success: false, message: 'Dữ liệu nodes không hợp lệ' });
     }
-    
+
     // Automatically generate sequential edges if missing
     let finalEdges = Array.isArray(edges) ? edges : [];
     if (finalEdges.length === 0 && nodes.length > 1) {
@@ -511,13 +518,19 @@ router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(
         });
       }
     }
-    
+
     const username = req.user?.username || 'SYSTEM';
     const fullname = req.user?.full_name || username;
 
-    // Determine next version number (e.g., 1.0 -> 1.1)
-    let latestVersionRow = null; // replaced 
+    const db = getTargetFirestore();
+    const versionsSnap = await db.collection('topology_versions')
+        .where('loop_id', 'in', [loop.id, loop.loop_id, id].filter(Boolean))
+        .orderBy('createdAt', 'desc')
+        .limit(1).get();
+        
+    let latestVersionRow = versionsSnap.empty ? null : versionsSnap.docs[0].data();
     let nextVersion = '1.0';
+
     if (latestVersionRow) {
       const parts = latestVersionRow.version.split('.');
       const major = parseInt(parts[0] || '1', 10);
@@ -526,41 +539,73 @@ router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(
     }
 
     const status = submit_for_approval ? 'SUBMITTED' : 'DRAFT';
-
+    const now = FieldValue.serverTimestamp();
     
-
+    // Create new version
+    const versionRef = db.collection('topology_versions').doc();
+    await versionRef.set({
+      loop_id: loop.id,
+      version: nextVersion,
+      status: status,
+      change_summary: change_summary || '',
+      reason: reason || '',
+      created_by: username,
+      createdAt: now,
+      updatedAt: now
+    });
     
-      
-
     // Save node records in topology_nodes
+    const batch = db.batch();
     for (const n of nodes) {
-      
+      const nodeRef = db.collection('topology_nodes').doc();
+      batch.set(nodeRef, {
+        version_id: versionRef.id,
+        device_id: n.device_id,
+        device_code: n.device_code || null,
+        name: n.name || '',
+        device_type: n.device_type || 'UNKNOWN',
+        node_order: n.node_order || 0,
+        x_position: n.x_position || null,
+        y_position: n.y_position || null,
+        createdAt: now
+      });
     }
 
     // Save edge records in topology_edges
     for (const e of finalEdges) {
-      
+      const edgeRef = db.collection('topology_edges').doc();
+      batch.set(edgeRef, {
+        version_id: versionRef.id,
+        source_device_id: e.source_device_id,
+        target_device_id: e.target_device_id,
+        connection_type: e.connection_type || 'OVERHEAD',
+        length_m: e.length_m || null,
+        status: e.status || 'ACTIVE',
+        createdAt: now
+      });
     }
-
+    
     // If submitting for approval, create change request
     if (submit_for_approval) {
-      // Get previous version for snapshot
-      const prevVersionRow: any = null;
-
-      
-
-      // Audit log
-      
-    } else {
-      // Audit log draft save
-      
+      const crRef = db.collection('topology_change_requests').doc();
+      batch.set(crRef, {
+        loop_id: loop.id,
+        version_id: versionRef.id,
+        requested_by: username,
+        reason: reason || change_summary || '',
+        status: 'PENDING',
+        createdAt: now,
+        updatedAt: now
+      });
     }
+    
+    await batch.commit();
 
     res.status(201).json({
       success: true,
       message: submit_for_approval ? `Đã gửi yêu cầu phê duyệt sơ đồ v${nextVersion}` : `Đã lưu sơ đồ v${nextVersion}`,
       version: nextVersion,
-      versionId: null
+      versionId: versionRef.id
     });
   } catch (err: any) {
     console.error('Error saving topology version:', err);
@@ -568,8 +613,8 @@ router.post('/:id/versions', authenticateToken, denyGuestMutations, requireRole(
   }
 });
 
-// POST /api/loops/:id/restore-version - Restore a previous version by creating a NEW version
-router.post('/:id/restore-version', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), (req: AuthenticatedRequest, res) => {
+
+router.post('/:id/restore-version', authenticateToken, denyGuestMutations, requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER']), async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { version_id, reason } = req.body;
@@ -578,54 +623,104 @@ router.post('/:id/restore-version', authenticateToken, denyGuestMutations, requi
       return res.status(400).json({ success: false, message: 'Thiếu version_id để khôi phục' });
     }
 
-    const loop = findLoop(id);
+    const loop = await loopRepo.getById(id);
     if (!loop) {
       return res.status(404).json({ success: false, message: 'Khép vòng không tồn tại' });
     }
 
-    const sourceVersion: any = null;
-    if (!sourceVersion) {
+    const db = getTargetFirestore();
+    const sourceVersionSnap = await db.collection('topology_versions').doc(version_id.toString()).get();
+    
+    if (!sourceVersionSnap.exists) {
       return res.status(404).json({ success: false, message: 'Phiên bản nguồn không tồn tại' });
     }
+    const sourceVersion = sourceVersionSnap.data();
 
     const username = req.user?.username || 'SYSTEM';
     const fullname = req.user?.full_name || username;
 
-    // Calculate next version number
-    const latestVersionRow: any = null;
-
+    const versionsSnap = await db.collection('topology_versions')
+        .where('loop_id', 'in', [loop.id, loop.loop_id, id].filter(Boolean))
+        .orderBy('createdAt', 'desc')
+        .limit(1).get();
+        
+    let latestVersionRow = versionsSnap.empty ? null : versionsSnap.docs[0].data();
     let nextVersion = '2.0';
+
     if (latestVersionRow) {
       const parts = latestVersionRow.version.split('.');
       const major = parseInt(parts[0] || '1', 10);
       const minor = parseInt(parts[1] || '0', 10);
       nextVersion = `${major}.${minor + 1}`;
     }
-
-    // Insert new version copying nodes & edges from sourceVersion
     
-
-    const newVersionRow: any = null;
-
-    // Copy nodes table
-    const sourceNodes: any = [];
-    for (const sn of sourceNodes) {
-      
-    }
-
-    // Copy edges table
-    const sourceEdges: any = [];
-    for (const se of sourceEdges) {
-      
-    }
-
-    // Audit log
+    const now = FieldValue.serverTimestamp();
+    const versionRef = db.collection('topology_versions').doc();
     
+    await versionRef.set({
+      loop_id: loop.id,
+      version: nextVersion,
+      status: 'DRAFT',
+      change_summary: `Khôi phục từ phiên bản ${sourceVersion.version}`,
+      reason: reason || '',
+      created_by: username,
+      createdAt: now,
+      updatedAt: now
+    });
+    
+    const batch = db.batch();
+    
+    const sourceNodesSnap = await db.collection('topology_nodes').where('version_id', '==', sourceVersionSnap.id).get();
+    sourceNodesSnap.docs.forEach(doc => {
+      const data = doc.data();
+      const nodeRef = db.collection('topology_nodes').doc();
+      batch.set(nodeRef, {
+        version_id: versionRef.id,
+        device_id: data.device_id,
+        device_code: data.device_code,
+        name: data.name,
+        device_type: data.device_type,
+        node_order: data.node_order,
+        x_position: data.x_position,
+        y_position: data.y_position,
+        createdAt: now
+      });
+    });
+    
+    const sourceEdgesSnap = await db.collection('topology_edges').where('version_id', '==', sourceVersionSnap.id).get();
+    sourceEdgesSnap.docs.forEach(doc => {
+      const data = doc.data();
+      const edgeRef = db.collection('topology_edges').doc();
+      batch.set(edgeRef, {
+        version_id: versionRef.id,
+        source_device_id: data.source_device_id,
+        target_device_id: data.target_device_id,
+        connection_type: data.connection_type,
+        length_m: data.length_m,
+        status: data.status,
+        createdAt: now
+      });
+    });
+    
+    await batch.commit();
 
-    res.json({
+    recordAuditLog({
+      user_id: req.user!.id,
+      username: req.user!.username,
+      user_fullname: req.user!.full_name,
+      action: 'RESTORE_TOPOLOGY',
+      module: 'QUAN_LY_KHEP_VONG',
+      target_id: id,
+      details: `Khôi phục sơ đồ về v${sourceVersion.version} (tạo v${nextVersion})`,
+      result: 'SUCCESS',
+      ip_address: req.ip
+    });
+
+    res.status(201).json({
       success: true,
-      message: `Đã khôi phục thành công sơ đồ về v${sourceVersion.version} (Phiên bản mới: v${nextVersion})`,
-      newVersion: nextVersion
+      message: `Đã tạo bản nháp v${nextVersion} từ v${sourceVersion.version}`,
+      version: nextVersion,
+      versionId: versionRef.id
     });
   } catch (err: any) {
     console.error('Error restoring topology version:', err);

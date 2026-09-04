@@ -2,14 +2,27 @@
 interface CacheEntry<T> {
   data: T;
   expiresAt: number;
+  namespace?: string;
 }
+
+export const TTL_USER_PROFILE = 15 * 60 * 1000; // 15 mins (900,000 ms)
+export const TTL_MASTER_DATA = 2 * 60 * 60 * 1000; // 2 hours (7,200,000 ms)
+export const TTL_DEVICES_LIST = 3 * 60 * 1000; // 3 mins (180,000 ms)
+export const TTL_ACTIVE_DEVICES = 5 * 60 * 1000; // 5 mins (300,000 ms)
+export const TTL_DASHBOARD_STATS = 5 * 60 * 1000; // 5 mins (300,000 ms)
+
 const memoryCache = new Map<string, CacheEntry<any>>();
 
 // Map to store ongoing promises for keys to prevent duplicate concurrent reads
 const ongoingRequests = new Map<string, Promise<any>>();
 const invalidationTimestamps = new Map<string, number>();
 
-export async function getOrFetchCached<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
+export async function getOrFetchCached<T>(
+  key: string,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+  namespace?: string
+): Promise<T> {
   const entry = memoryCache.get(key);
   if (entry && Date.now() <= entry.expiresAt) {
     logCacheHit('dedup', key);
@@ -26,7 +39,7 @@ export async function getOrFetchCached<T>(key: string, ttlMs: number, fetcher: (
     // STALE CACHE RACE FIX: only set cache if it wasn't invalidated during the fetch
     const lastInvalidated = invalidationTimestamps.get(key) || 0;
     if (lastInvalidated <= fetchStartTime) {
-      setCached(key, data, ttlMs);
+      setCached(key, data, ttlMs, namespace);
     }
     return data;
   }).catch(err => {
@@ -48,35 +61,54 @@ export function getCached<T>(key: string): T | null {
   return entry.data as T;
 }
 
-export function setCached<T>(key: string, data: T, ttlMs: number = 60000): void {
+export function setCached<T>(key: string, data: T, ttlMs: number = 60000, namespace?: string): void {
   memoryCache.set(key, {
     data,
-    expiresAt: Date.now() + ttlMs
+    expiresAt: Date.now() + ttlMs,
+    namespace
   });
 }
 
-export function invalidateCache(prefixOrKey: string): void {
+export function invalidateKey(key: string): void {
   const now = Date.now();
-  for (const key of memoryCache.keys()) {
-    if (key === prefixOrKey || key.startsWith(prefixOrKey)) {
+  memoryCache.delete(key);
+  invalidationTimestamps.set(key, now);
+  for (const k of ongoingRequests.keys()) {
+    if (k === key) {
+      invalidationTimestamps.set(k, now);
+    }
+  }
+}
+
+export function invalidateNamespace(namespace: string): void {
+  const now = Date.now();
+  for (const [key, entry] of memoryCache.entries()) {
+    if (
+      entry.namespace === namespace ||
+      key === namespace ||
+      key.startsWith(`${namespace}_`) ||
+      key.startsWith(`${namespace}:`) ||
+      key.startsWith(namespace)
+    ) {
       memoryCache.delete(key);
     }
   }
   
-  // Mark invalidation timestamp to prevent in-flight requests from setting stale data
-  if (prefixOrKey.includes('_')) {
-    // exact key or prefix? usually we just set for the exact prefix
-    invalidationTimestamps.set(prefixOrKey, now);
-    
-    // Also check ongoing requests to mark their keys if prefix matches
-    for (const key of ongoingRequests.keys()) {
-       if (key === prefixOrKey || key.startsWith(prefixOrKey)) {
-          invalidationTimestamps.set(key, now);
-       }
+  invalidationTimestamps.set(namespace, now);
+  for (const key of ongoingRequests.keys()) {
+    if (
+      key === namespace ||
+      key.startsWith(`${namespace}_`) ||
+      key.startsWith(`${namespace}:`) ||
+      key.startsWith(namespace)
+    ) {
+      invalidationTimestamps.set(key, now);
     }
-  } else {
-    invalidationTimestamps.set(prefixOrKey, now);
   }
+}
+
+export function invalidateCache(prefixOrKey: string): void {
+  invalidateNamespace(prefixOrKey);
 }
 
 export function clearAllCache(): void {

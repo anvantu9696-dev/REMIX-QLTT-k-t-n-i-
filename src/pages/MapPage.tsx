@@ -10,6 +10,7 @@ import {
 import { api } from '../lib/api';
 import { Device, Substation, Feeder } from '../types';
 import { normalizeLocation } from '../utils/location';
+import { useDataContext } from '../context/DataContext';
 
 interface MapPageProps {
   onNavigateToDetail: (deviceId: number | string) => void;
@@ -20,10 +21,19 @@ export const MapPage: React.FC<MapPageProps> = ({ onNavigateToDetail }) => {
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [substations, setSubstations] = useState<Substation[]>([]);
-  const [feeders, setFeeders] = useState<Feeder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    devices,
+    substations,
+    feeders,
+    loadingDevices,
+    loadingSubstations,
+    loadingFeeders,
+    fetchDevices,
+    fetchSubstations,
+    fetchFeeders
+  } = useDataContext();
+
+  const loading = loadingDevices || loadingSubstations || loadingFeeders;
 
   // Filters
   const [stationFilter, setStationFilter] = useState('');
@@ -36,27 +46,10 @@ export const MapPage: React.FC<MapPageProps> = ({ onNavigateToDetail }) => {
   const [tileMode, setTileMode] = useState<'osm' | 'satellite'>('osm');
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [devRes, stRes, fdRes] = await Promise.all([
-        api.getDevices(),
-        api.getSubstations(),
-        api.getFeeders()
-      ]);
-
-      if (devRes.success) setDevices(devRes.data);
-      if (stRes.success) setSubstations(stRes.data);
-      if (fdRes.success) setFeeders(fdRes.data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    fetchDevices();
+    fetchSubstations();
+    fetchFeeders();
+  }, [fetchDevices, fetchSubstations, fetchFeeders]);
 
   // Filter devices that have coordinates
   const filteredDevices = devices.filter(d => {

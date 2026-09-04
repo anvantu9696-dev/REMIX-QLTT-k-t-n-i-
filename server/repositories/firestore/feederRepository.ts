@@ -1,20 +1,23 @@
 import { getTargetFirestore } from '../../firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit, getOrFetchCached } from '../../utils/firestoreCache';
+import { getOrFetchCached, invalidateNamespace, logFirebaseWrite, TTL_MASTER_DATA } from '../../utils/firestoreCache';
+import { gridStructureRepo, BundledFeeder } from './gridStructureRepository';
+import { dashboardStatsRepo } from './dashboardStatsRepository';
 
 export type Feeder = {
   id: string;
   substation_id: string | number;
   feeder_code: string;
+  code?: string;
   name: string;
   status: string;
   version: number;
-  createdAt: any;
-  updatedAt: any;
+  createdAt?: any;
+  updatedAt?: any;
   isDeleted: boolean;
   lastOperationId?: string;
-  createdBy: string;
-  updatedBy: string;
+  createdBy?: string;
+  updatedBy?: string;
   voltage_level?: string;
   start_point?: string;
   end_point?: string;
@@ -22,110 +25,73 @@ export type Feeder = {
 
 export type FeederCreateInput = Omit<Feeder, 'id' | 'version' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'lastOperationId'>;
 
-const CACHE_KEY_ALL = 'feeders_list_all';
-
 export const feederRepo = {
-  async list(options?: { substation_id?: string | number; status?: string; limit?: number; lastDocId?: string }) {
-    const subId = options?.substation_id !== undefined ? String(options.substation_id) : undefined;
-    const cacheKey = `feeders_list_${subId || 'all'}_${options?.status || 'all'}_${options?.limit || 'all'}_${options?.lastDocId || 'none'}`;
+  async list(options?: { substation_id?: string | number; status?: string; limit?: number; lastDocId?: string }): Promise<Feeder[]> {
+    const rawSubId = options?.substation_id;
+    const isAll = rawSubId === undefined || rawSubId === null || rawSubId === '' || rawSubId === 'all' || rawSubId === 'ALL';
 
-    const cached = getCached<Feeder[]>(cacheKey);
-    if (cached) {
-      logCacheHit('feeders', cacheKey);
-      return cached;
-    }
+    // Normalize cache key: if substationId is empty or 'all' without other filters, always use 'feeders_list_all'
+    const cacheKey = (isAll && !options?.status && !options?.limit && !options?.lastDocId)
+      ? 'feeders_list_all'
+      : `feeders_list_${isAll ? 'all' : String(rawSubId)}_${options?.status || 'any'}_${options?.limit || 'nolimit'}_${options?.lastDocId || 'none'}`;
 
-    const db = getTargetFirestore();
-    let query: FirebaseFirestore.Query = db.collection('feeders').where('isDeleted', '==', false);
-
-    if (subId) {
-      query = query.where('substation_id', '==', String(subId));
-    }
-    if (options?.status) {
-      query = query.where('status', '==', options.status);
-    }
-
-    if (options?.lastDocId) {
-      const docSnap = await db.collection('feeders').doc(options.lastDocId).get();
-      if (docSnap.exists) {
-        query = query.startAfter(docSnap);
-      }
-    }
-
-    const limit = options?.limit || 50;
-    if (limit) {
-      query = query.limit(limit);
-      
-    }
-
-    const snapshot = await query.get();
-    const queryDesc = `sub=${subId || 'any'},status=${options?.status || 'any'},limit=${options?.limit || 'none'}`;
-    logFirebaseRead('feeders', queryDesc, snapshot.size);
-    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Feeder[];
-
-    setCached(cacheKey, list, 300000);
-    return list;
+    return getOrFetchCached(
+      cacheKey,
+      TTL_MASTER_DATA, // 2 hours
+      async () => {
+        const queryOptions = isAll
+          ? { ...options, substation_id: undefined }
+          : { ...options, substation_id: rawSubId };
+        const feeders = await gridStructureRepo.getFeeders(queryOptions);
+        return feeders.map(f => ({
+          ...f,
+          substation_id: f.substation_id,
+          version: f.version || 1,
+          isDeleted: false
+        })) as Feeder[];
+      },
+      'feeders'
+    );
   },
 
-  async listBySubstationId(substationId: string | number) {
+  async listBySubstationId(substationId: string | number): Promise<Feeder[]> {
     return this.list({ substation_id: substationId });
   },
 
-  async count(options?: { substation_id?: string | number }) {
-    const subId = options?.substation_id !== undefined ? String(options.substation_id) : undefined;
-    const cacheKey = subId ? `feeders_count_sub_${subId}` : 'feeders_count_all';
-
-    const cached = getCached<number>(cacheKey);
-    if (cached !== null) {
-      logCacheHit('feeders_count', cacheKey);
-      return cached;
-    }
-
-    const db = getTargetFirestore();
-    let query = db.collection('feeders').where('isDeleted', '==', false);
-
-    if (subId) {
-      query = query.where('substation_id', '==', String(subId));
-    }
-
-    const snap = await query.count().get();
-    const count = snap.data().count;
-    logFirebaseRead('feeders', subId ? `count(substation_id=${subId})` : 'count(isDeleted=false)', count);
-    setCached(cacheKey, count, 300000);
-    return count;
+  async count(options?: { substation_id?: string | number }): Promise<number> {
+    return gridStructureRepo.countFeeders(options);
   },
   
-  async getById(id: string) {
-    const cacheKey = `feeder_doc_${id}`;
-    return getOrFetchCached(cacheKey, 300000, async () => {
-        const db = getTargetFirestore();
-        const doc = await db.collection('feeders').doc(id).get();
-        logFirebaseRead('feeders', `doc(${id})`, doc.exists ? 1 : 0);
-        if (!doc.exists || doc.data()?.isDeleted) return null;
-        const data = { id: doc.id, ...doc.data() };
-        return data as any;
-    });  },
-
-  async findByCode(code: string) {
-      const db = getTargetFirestore();
-      const snapshot = await db.collection('feeders')
-          .where('feeder_code', '==', code)
-          .where('isDeleted', '==', false)
-          .limit(1)
-          .get();
-      logFirebaseRead('feeders', `feeder_code=${code}`, snapshot.size);
-      if (snapshot.empty) return null;
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Feeder;
+  async getById(id: string): Promise<Feeder | null> {
+    const feeder = await gridStructureRepo.getFeederById(id);
+    if (!feeder) return null;
+    return {
+      ...feeder,
+      substation_id: feeder.substation_id,
+      version: feeder.version || 1,
+      isDeleted: false
+    } as Feeder;
   },
 
-  async exists(id: string) {
-      const doc = await this.getById(id);
-      return doc !== null && !doc.isDeleted;
+  async findByCode(code: string): Promise<Feeder | null> {
+    const feeder = await gridStructureRepo.findFeederByCode(code);
+    if (!feeder) return null;
+    return {
+      ...feeder,
+      substation_id: feeder.substation_id,
+      version: feeder.version || 1,
+      isDeleted: false
+    } as Feeder;
   },
 
-  async create(data: FeederCreateInput, operationId: string) {
+  async exists(id: string): Promise<boolean> {
+    const doc = await this.getById(id);
+    return doc !== null && !doc.isDeleted;
+  },
+
+  async create(data: FeederCreateInput, operationId: string): Promise<Feeder> {
     const db = getTargetFirestore();
-    return await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction) => {
         const eventRef = db.collection('operation_events').doc(operationId);
         const eventDoc = await transaction.get(eventRef);
         if (eventDoc.exists) return eventDoc.data()?.result;
@@ -133,8 +99,10 @@ export const feederRepo = {
         const docRef = db.collection('feeders').doc();
         const now = FieldValue.serverTimestamp();
         
+        const code = (data as any).feeder_code || (data as any).code || docRef.id;
         const docData = {
             ...data,
+            feeder_code: code,
             version: 1,
             createdAt: now,
             updatedAt: now,
@@ -145,46 +113,51 @@ export const feederRepo = {
         transaction.set(docRef, docData);
         transaction.set(eventRef, { operationId, result: { id: docRef.id, ...docData } });
         
-        invalidateCache('feeders');
-        invalidateCache('dashboard_stats');
+        await dashboardStatsRepo.recordFeederDelta(1, transaction);
+
         logFirebaseWrite('feeders', docRef.id, 'CREATE');
         return { id: docRef.id, ...docData } as Feeder;
     });
+
+    // Rebuild bundled document and invalidate cache
+    await gridStructureRepo.rebuildGridStructure();
+    return result;
   },
 
   async update(id: string, data: Partial<Feeder>, expectedVersion: number, operationId: string) {
     const db = getTargetFirestore();
-    return await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction) => {
         const docRef = db.collection('feeders').doc(id);
         const doc = await transaction.get(docRef);
         if (!doc.exists || doc.data()?.isDeleted) throw new Error('NOT_FOUND');
         
         const currentData = doc.data()!;
-        if (currentData.version !== expectedVersion) throw new Error('VERSION_CONFLICT');
+        if (currentData.version !== undefined && expectedVersion !== undefined && currentData.version !== expectedVersion) throw new Error('VERSION_CONFLICT');
         if (currentData.lastOperationId === operationId) return currentData;
 
         const now = FieldValue.serverTimestamp();
         const updateData = {
             ...currentData,
             ...data,
-            version: currentData.version + 1,
+            version: (currentData.version || 0) + 1,
             updatedAt: now,
             lastOperationId: operationId
         };
 
         transaction.update(docRef, updateData);
         
-        invalidateCache('feeders');
-        invalidateCache(`feeder_doc_${id}`);
-        invalidateCache('dashboard_stats');
         logFirebaseWrite('feeders', id, 'UPDATE');
         return { id: doc.id, ...updateData };
     });
+
+    // Rebuild bundled document and invalidate cache
+    await gridStructureRepo.rebuildGridStructure();
+    return result;
   },
 
   async delete(id: string, operationId: string) {
     const db = getTargetFirestore();
-    return await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction) => {
         const docRef = db.collection('feeders').doc(id);
         const doc = await transaction.get(docRef);
         if (!doc.exists || doc.data()?.isDeleted) throw new Error('NOT_FOUND');
@@ -198,17 +171,20 @@ export const feederRepo = {
             isDeleted: true,
             deletedAt: now,
             updatedAt: now,
-            version: currentData.version + 1,
+            version: (currentData.version || 0) + 1,
             lastOperationId: operationId
         };
 
         transaction.update(docRef, updateData);
         
-        invalidateCache('feeders');
-        invalidateCache(`feeder_doc_${id}`);
-        invalidateCache('dashboard_stats');
+        await dashboardStatsRepo.recordFeederDelta(-1, transaction);
+
         logFirebaseWrite('feeders', id, 'DELETE');
         return { id: doc.id, ...updateData };
     });
+
+    // Rebuild bundled document and invalidate cache
+    await gridStructureRepo.rebuildGridStructure();
+    return result;
   }
 };

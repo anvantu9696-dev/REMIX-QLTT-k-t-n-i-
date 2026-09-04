@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, where, limit } from 'firebase/firestore';
 import { User, RoleCode, UserStatus } from '../types';
 import { formatDateTime } from '../utils/dateTime';
 import { api } from '../lib/api';
@@ -25,9 +25,10 @@ export const UsersPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
 
-  useEffect(() => {
-    // Realtime listener on Firestore users collection
-    const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const snapshot = await getDocs(query(collection(db, 'users'), where('deleted_at', '==', null), limit(100)));
       const list: User[] = [];
       snapshot.forEach(docSnap => {
         const data = docSnap.data();
@@ -49,14 +50,19 @@ export const UsersPage: React.FC = () => {
           lastLoginAt: data.lastLoginAt
         } as any);
       });
+      
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setUsers(list);
+    } catch (err) {
+      console.error("Lỗi khi tải danh sách users", err);
+      toast.error('Lỗi khi tải danh sách users');
+    } finally {
       setLoading(false);
-    }, (error) => {
-      console.error('Error listening to users collection:', error);
-      setLoading(false);
-    });
+    }
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    fetchUsers();
   }, []);
 
   const handleUpdateStatus = async (uid: string, newStatus: UserStatus) => {

@@ -1,6 +1,7 @@
 import { getTargetFirestore } from '../../firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getCached, setCached, invalidateCache, logFirebaseRead, logFirebaseWrite, logCacheHit, getOrFetchCached } from '../../utils/firestoreCache';
+import { getCached, setCached, invalidateNamespace, logFirebaseRead, logFirebaseWrite, logCacheHit, getOrFetchCached, TTL_DEVICES_LIST, TTL_ACTIVE_DEVICES } from '../../utils/firestoreCache';
+import { dashboardStatsRepo } from './dashboardStatsRepository';
 
 export type Device = {
   id: string;
@@ -52,6 +53,55 @@ export interface DeviceListOptions {
 }
 
 export const deviceRepo = {
+  async listDelta(updatedAfter: string | Date): Promise<{ devices: Device[]; last_sync_timestamp: string }> {
+    const db = getTargetFirestore();
+    const dateObj = typeof updatedAfter === 'string' ? new Date(updatedAfter) : updatedAfter;
+    if (isNaN(dateObj.getTime())) {
+      throw new Error('INVALID_TIMESTAMP');
+    }
+
+    const isoStr = dateObj.toISOString();
+    const nowIso = new Date().toISOString();
+
+    // Query documents updated after timestamp (including isDeleted: true for deletion sync)
+    // Support both native Firestore Timestamp and ISO string formats
+    const [snapDate, snapStr] = await Promise.all([
+      db.collection('devices').where('updatedAt', '>', dateObj).get(),
+      db.collection('devices').where('updatedAt', '>', isoStr).get().catch(() => ({ docs: [] }))
+    ]);
+
+    const docsMap = new Map<string, FirebaseFirestore.DocumentSnapshot>();
+    snapDate.docs.forEach(doc => docsMap.set(doc.id, doc));
+    snapStr.docs.forEach(doc => docsMap.set(doc.id, doc));
+
+    const totalCount = docsMap.size;
+    logFirebaseRead('devices', `delta(updatedAfter=${isoStr})`, totalCount);
+
+    const devices = Array.from(docsMap.values()).map(doc => {
+      const data = doc.data()!;
+      return {
+        id: doc.id,
+        ...data,
+        isDeleted: !!data.isDeleted
+      };
+    }) as Device[];
+
+    return {
+      devices,
+      last_sync_timestamp: nowIso
+    };
+  },
+
+  async getAllActive(): Promise<Device[]> {
+    const cacheKey = 'devices_all_active';
+    return getOrFetchCached(cacheKey, TTL_ACTIVE_DEVICES, async () => {
+      const db = getTargetFirestore();
+      const snapshot = await db.collection('devices').where('isDeleted', '==', false).get();
+      logFirebaseRead('devices', 'all_active', snapshot.size);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Device[];
+    }, 'devices');
+  },
+
   async list(options?: DeviceListOptions) {
     const subId = options?.substation_id !== undefined ? String(options.substation_id) : undefined;
     const feedId = options?.feeder_id !== undefined ? String(options.feeder_id) : undefined;
@@ -60,57 +110,44 @@ export const deviceRepo = {
     const limit = options?.limit || 50;
     const lastDocId = options?.lastDocId;
 
-    const cacheKey = `devices_list_${subId || 'all'}_${feedId || 'all'}_${type || 'all'}_${st || 'all'}_${limit || 'all'}_${lastDocId || 'none'}`;
-    const cached = getCached<Device[]>(cacheKey);
-    if (cached) {
-      logCacheHit('devices', cacheKey);
-      return cached;
-    }
+    const all = await this.getAllActive();
 
-    const db = getTargetFirestore();
-    let query: FirebaseFirestore.Query = db.collection('devices').where('isDeleted', '==', false);
+    let filtered = all.filter(d => {
+      if (subId && subId !== 'all' && subId !== 'ALL') {
+        const numSubId = Number(subId);
+        const matchStr = String(d.substation_id) === subId;
+        const matchNum = !isNaN(numSubId) && Number(d.substation_id) === numSubId;
+        if (!matchStr && !matchNum) return false;
+      }
+      if (feedId && feedId !== 'all' && feedId !== 'ALL') {
+        const numFeedId = Number(feedId);
+        const matchStr = String(d.feeder_id) === feedId;
+        const matchNum = !isNaN(numFeedId) && Number(d.feeder_id) === numFeedId;
+        if (!matchStr && !matchNum) return false;
+      }
+      if (type && type !== 'all') {
+        const dt = type.toUpperCase() === 'RCL' ? 'REC' : type.toUpperCase();
+        const dType = (d.device_type || '').toUpperCase() === 'RCL' ? 'REC' : (d.device_type || '').toUpperCase();
+        if (dType !== dt) return false;
+      }
+      if (st && st !== 'all' && d.status !== st) {
+        return false;
+      }
+      return true;
+    });
 
-    if (subId) {
-      const numSubId = Number(subId);
-      if (!isNaN(numSubId) && String(numSubId) === subId) {
-        query = query.where('substation_id', 'in', [subId, numSubId]);
-      } else {
-        query = query.where('substation_id', '==', subId);
-      }
-    }
-    if (feedId) {
-      const numFeedId = Number(feedId);
-      if (!isNaN(numFeedId) && String(numFeedId) === feedId) {
-        query = query.where('feeder_id', 'in', [feedId, numFeedId]);
-      } else {
-        query = query.where('feeder_id', '==', feedId);
-      }
-    }
-    if (type) {
-      const dt = type.toUpperCase() === 'RCL' ? 'REC' : type.toUpperCase();
-      query = query.where('device_type', '==', dt);
-    }
-    if (st) {
-      query = query.where('status', '==', st);
-    }
-    if (limit) {
-      query = query.limit(Number(limit));
-    }
-    
     if (lastDocId) {
-      const docSnap = await db.collection('devices').doc(lastDocId).get();
-      if (docSnap.exists) {
-        query = query.startAfter(docSnap);
+      const idx = filtered.findIndex(d => String(d.id) === String(lastDocId));
+      if (idx !== -1) {
+        filtered = filtered.slice(idx + 1);
       }
     }
 
-    const snapshot = await query.get();
-    const queryDesc = `sub=${subId || 'any'},feed=${feedId || 'any'},type=${type || 'any'},limit=${limit || 'none'}`;
-    logFirebaseRead('devices', queryDesc, snapshot.size);
+    if (limit && limit > 0) {
+      filtered = filtered.slice(0, Number(limit));
+    }
 
-    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Device[];
-    setCached(cacheKey, list, 300000); 
-    return list;
+    return filtered;
   },
 
   async listByFeederId(feederId: string | number) {
@@ -125,50 +162,35 @@ export const deviceRepo = {
     const subId = options?.substation_id !== undefined ? String(options.substation_id) : undefined;
     const feedId = options?.feeder_id !== undefined ? String(options.feeder_id) : undefined;
 
-    const cacheKey = `devices_count_${subId || 'all'}_${feedId || 'all'}`;
-    const cached = getCached<number>(cacheKey);
-    if (cached !== null) {
-      logCacheHit('devices_count', cacheKey);
-      return cached;
-    }
-
-    const db = getTargetFirestore();
-    let query: FirebaseFirestore.Query = db.collection('devices').where('isDeleted', '==', false);
-
-    if (subId) {
-      const numSubId = Number(subId);
-      if (!isNaN(numSubId) && String(numSubId) === subId) {
-        query = query.where('substation_id', 'in', [subId, numSubId]);
-      } else {
-        query = query.where('substation_id', '==', subId);
+    const all = await this.getAllActive();
+    return all.filter(d => {
+      if (subId && subId !== 'all' && subId !== 'ALL') {
+        const numSubId = Number(subId);
+        const matchStr = String(d.substation_id) === subId;
+        const matchNum = !isNaN(numSubId) && Number(d.substation_id) === numSubId;
+        if (!matchStr && !matchNum) return false;
       }
-    }
-    if (feedId) {
-      const numFeedId = Number(feedId);
-      if (!isNaN(numFeedId) && String(numFeedId) === feedId) {
-        query = query.where('feeder_id', 'in', [feedId, numFeedId]);
-      } else {
-        query = query.where('feeder_id', '==', feedId);
+      if (feedId && feedId !== 'all' && feedId !== 'ALL') {
+        const numFeedId = Number(feedId);
+        const matchStr = String(d.feeder_id) === feedId;
+        const matchNum = !isNaN(numFeedId) && Number(d.feeder_id) === numFeedId;
+        if (!matchStr && !matchNum) return false;
       }
-    }
-
-    const snap = await query.count().get();
-    const count = snap.data().count;
-    logFirebaseRead('devices', `count(${subId || 'all'}, ${feedId || 'all'})`, count);
-    setCached(cacheKey, count, 300000);
-    return count;
+      return true;
+    }).length;
   },
   
   async getById(id: string) {
     const cacheKey = `device_doc_${id}`;
-    return getOrFetchCached(cacheKey, 300000, async () => {
+    return getOrFetchCached(cacheKey, TTL_DEVICES_LIST, async () => {
         const db = getTargetFirestore();
         const doc = await db.collection('devices').doc(id).get();
         logFirebaseRead('devices', `doc(${id})`, doc.exists ? 1 : 0);
         if (!doc.exists || doc.data()?.isDeleted) return null;
         const data = { id: doc.id, ...doc.data() };
         return data as any;
-    });  },
+    }, 'devices');
+  },
 
   async getByDeviceId(deviceId: string) {
     const db = getTargetFirestore();
@@ -228,8 +250,11 @@ export const deviceRepo = {
         transaction.set(docRef, docData);
         transaction.set(eventRef, { operationId, result: { id: docRef.id, ...docData } });
 
-        invalidateCache('devices');
-        invalidateCache('dashboard_stats');
+        // Atomic stats increment
+        await dashboardStatsRepo.recordDeviceCreated(docData, transaction);
+
+        invalidateNamespace('devices');
+        invalidateNamespace('dashboard_stats');
         logFirebaseWrite('devices', docRef.id, 'CREATE');
         return { id: docRef.id, ...docData } as Device;
     });
@@ -243,7 +268,7 @@ export const deviceRepo = {
         if (!doc.exists || doc.data()?.isDeleted) throw new Error('NOT_FOUND');
         
         const currentData = doc.data()!;
-        if (currentData.version !== expectedVersion) throw new Error('VERSION_CONFLICT');
+        if (currentData.version !== undefined && expectedVersion !== undefined && currentData.version !== expectedVersion) throw new Error('VERSION_CONFLICT');
         if (currentData.lastOperationId === operationId) return currentData;
 
         const now = FieldValue.serverTimestamp();
@@ -274,16 +299,18 @@ export const deviceRepo = {
             substation_code: data.substation_code !== undefined ? data.substation_code : currentData.substation_code,
             feeder_name,
             feeder_code: data.feeder_code !== undefined ? data.feeder_code : currentData.feeder_code,
-            version: currentData.version + 1,
+            version: (currentData.version || 0) + 1,
             updatedAt: now,
             lastOperationId: operationId
         };
 
         transaction.update(docRef, updateData);
 
-        invalidateCache('devices');
-        invalidateCache(`device_doc_${id}`);
-        invalidateCache('dashboard_stats');
+        // Atomic stats update
+        await dashboardStatsRepo.recordDeviceUpdated(currentData, updateData, transaction);
+
+        invalidateNamespace('devices');
+        invalidateNamespace('dashboard_stats');
         logFirebaseWrite('devices', id, 'UPDATE');
         return { id: doc.id, ...updateData };
     });
@@ -294,26 +321,40 @@ export const deviceRepo = {
     return await db.runTransaction(async (transaction) => {
         const docRef = db.collection('devices').doc(id);
         const doc = await transaction.get(docRef);
-        if (!doc.exists) throw new Error('NOT_FOUND');
+        if (!doc.exists || doc.data()?.isDeleted) throw new Error('NOT_FOUND');
         
         const currentData = doc.data()!;
-        
+        if (currentData.lastOperationId === operationId) return currentData;
+
+        const now = FieldValue.serverTimestamp();
+        const updateData = {
+            ...currentData,
+            isDeleted: true,
+            deletedBy,
+            deletedAt: now,
+            updatedAt: now,
+            lastOperationId: operationId,
+            version: (currentData.version || 0) + 1
+        };
+
         const backupRef = db.collection('deleted_devices_backup').doc();
         transaction.set(backupRef, {
             ...currentData,
             originalId: doc.id,
             deletedBy,
-            deletedAt: FieldValue.serverTimestamp(),
+            deletedAt: now,
             deleteBatchId: operationId
         });
         
-        transaction.delete(docRef);
+        transaction.update(docRef, updateData);
+
+        // Atomic stats decrement
+        await dashboardStatsRepo.recordDeviceDeleted(currentData, transaction);
         
-        invalidateCache('devices');
-        invalidateCache(`device_doc_${id}`);
-        invalidateCache('dashboard_stats');
+        invalidateNamespace('devices');
+        invalidateNamespace('dashboard_stats');
         logFirebaseWrite('devices', id, 'DELETE');
-        return { id: doc.id };
+        return { id: doc.id, ...updateData };
     });
   }
 };

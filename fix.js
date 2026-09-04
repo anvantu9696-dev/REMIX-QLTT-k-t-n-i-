@@ -1,0 +1,12 @@
+const fs = require('fs');
+let code = fs.readFileSync('src/lib/api.ts', 'utf8');
+code = code.replace(/L\ufffdi m\ufffdy ch\ufffd ho\ufffdc kh\ufffdng t\ufffdm th\ufffdy \ufffd\ufffd\ufffd\ufffdng d\ufffdn/g, 'Lỗi máy chủ hoặc không tìm thấy đường dẫn');
+code = code.replace(/\ufffdnh v\ufffd\ufffdt qu\ufffd dung l\ufffd\ufffdng cho ph\ufffdp \(413\). H\ufffd th\ufffdng \ufffd\ufffd t\ufffd \ufffd\ufffdng n\ufffdn \ufffdnh nh\ufffdng v\ufffdn v\ufffd\ufffdt gi\ufffdi h\ufffdn, vui l\ufffdng ch\ufffdn \ufffdnh nh\ufffd h\ufffdn./g, 'Ảnh vượt quá dung lượng cho phép (413). Hệ thống đã tự động nén ảnh nhưng vẫn vượt giới hạn, vui lòng chọn ảnh nhỏ hơn.');
+code = code.replace(/Phi\ufffdn \ufffd\ufffdng nh\ufffdp h\ufffdt h\ufffdn. Vui l\ufffdng \ufffd\ufffdng nh\ufffdp l\ufffdi./g, 'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+code = code.replace(/B\ufffdn kh\ufffdng c\ufffd quy\ufffdn th\ufffdc hi\ufffdn thao t\ufffdc n\ufffdy./g, 'Bạn không có quyền thực hiện thao tác này.');
+code = code.replace(/Kh\ufffdng t\ufffdm th\ufffdy API ho\ufffdc \ufffd\ufffd\ufffd\ufffdng d\ufffdn y\ufffdu c\ufffdu/g, 'Không tìm thấy API hoặc đường dẫn yêu cầu');
+code = code.replace(/M\ufffdy ch\ufffd g\ufffdp l\ufffdi khi x\ufffd l\ufffd y\ufffdu c\ufffdu ho\ufffdc d\ufffd li\ufffdu./g, 'Máy chủ gặp lỗi khi xử lý yêu cầu hoặc dữ liệu.');
+code = code.replace(/L\ufffdi y\ufffdu c\ufffdu h\ufffd th\ufffdng/g, 'Lỗi yêu cầu hệ thống');
+code = code.replace(/Th\ufffdi gian ch\ufffd m\ufffdy ch\ufffd qu\ufffd l\ufffdu \(timeout\)/g, 'Thời gian chờ máy chủ quá lâu (timeout)');
+code = code.replace(/K\ufffdt n\ufffdi \ufffd\ufffdn m\ufffdy ch\ufffd th\ufffdt b\ufffdi/g, 'Kết nối đến máy chủ thất bại');
+fs.writeFileSync('src/lib/api.ts', code);

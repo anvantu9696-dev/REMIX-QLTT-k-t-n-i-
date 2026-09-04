@@ -44,11 +44,11 @@ export const AuditLogsPage: React.FC = () => {
   };
 
   const loadMore = async () => {
-    if (!nextCursor) return;
+    if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
       const res = await api.getAuditLogs({
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         module: moduleFilter || undefined,
         result: resultFilter || undefined,
         limit: 20,
@@ -156,7 +156,7 @@ export const AuditLogsPage: React.FC = () => {
 
       {/* Logs Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
@@ -235,14 +235,25 @@ export const AuditLogsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Load More Button */}
       {nextCursor && (
-        <div className="mt-6 flex justify-center pb-6">
+        <div className="flex justify-center pt-2 pb-6">
           <button
             onClick={loadMore}
             disabled={loadingMore}
-            className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center transition-colors shadow-sm font-medium"
+            className="px-6 py-2.5 bg-white hover:bg-slate-50 text-blue-600 font-bold text-xs rounded-xl border border-blue-200 shadow-sm flex items-center space-x-2 transition-all disabled:opacity-50"
           >
-            {loadingMore ? 'Đang tải...' : 'Tải thêm nhật ký'}
+            {loadingMore ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Đang tải thêm...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Tải thêm nhật ký (Xem thêm 20 bản ghi)</span>
+              </>
+            )}
           </button>
         </div>
       )}

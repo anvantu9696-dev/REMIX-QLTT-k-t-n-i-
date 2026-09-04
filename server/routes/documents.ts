@@ -13,7 +13,7 @@ router.get('/', requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF', 'VIEWE
     const snapshot = await db.collection('documents')
       .where('deleted_at', '==', null)
       .orderBy('created_at', 'desc')
-      .get();
+      .limit(500).get();
     
     let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     return res.json({ success: true, data: docs });
@@ -21,7 +21,7 @@ router.get('/', requireRole(['ADMIN', 'MANAGER', 'SHIFT_LEADER', 'STAFF', 'VIEWE
     if (err.message.includes('index')) {
         try {
             const db = getTargetFirestore();
-            const snapshot = await db.collection('documents').get();
+            const snapshot = await db.collection('documents').limit(500).get();
             let all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
             all = all.filter(d => !d.deleted_at && !d.isDeleted);
             all.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));

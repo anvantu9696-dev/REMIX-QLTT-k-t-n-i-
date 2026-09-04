@@ -11,76 +11,36 @@ const generateIssueCode = () => {
 
 // 1. GET /api/issues - List
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
-  const { search, status, severity, device_id } = req.query;
+  const { status, severity, device_id, limit = '50', lastDocId } = req.query;
   try {
     const db = getTargetFirestore();
-    let q: any = db.collection('issues');
+    let query: any = db.collection('issues').where('isDeleted', '==', false);
+    if (status) query = query.where('status', '==', status);
+    if (severity) query = query.where('severity', '==', severity);
+    if (device_id) query = query.where('device_id', '==', String(device_id));
 
-    if (status) {
-      q = q.where('status', '==', status);
-    }
-    if (severity) {
-      q = q.where('severity', '==', severity);
-    }
-    if (device_id) {
-      q = q.where('device_id', '==', String(device_id));
-    }
+    query = query.orderBy('reported_at', 'desc');
+
+    let parsedLimit = parseInt(limit as string, 10) || 50;
     
-    const snapshot = await q.get();
+    if (lastDocId) {
+      const lastDoc = await db.collection('issues').doc(lastDocId as string).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+
+    const snapshot = await query.limit(parsedLimit + 1).get();
     let issues = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    if (search) {
-      const term = (search as string).toLowerCase();
-      issues = issues.filter((i: any) => 
-        (i.issue_code && i.issue_code.toLowerCase().includes(term)) ||
-        (i.title && i.title.toLowerCase().includes(term)) ||
-        (i.content && i.content.toLowerCase().includes(term)) ||
-        (i.device_name && i.device_name.toLowerCase().includes(term)) ||
-        (i.device_code && i.device_code.toLowerCase().includes(term))
-      );
+    const hasMore = issues.length > parsedLimit;
+    if (hasMore) {
+        issues.pop();
     }
 
-    issues.sort((a, b) => {
-      const sevWeight = { 'CRITICAL': 1, 'HIGH': 2, 'MEDIUM': 3, 'LOW': 4 };
-      const wA = sevWeight[a.severity as keyof typeof sevWeight] || 5;
-      const wB = sevWeight[b.severity as keyof typeof sevWeight] || 5;
-      if (wA !== wB) return wA - wB;
-      return (b.reported_at || '').localeCompare(a.reported_at || '');
-    });
-
-    res.json({ success: true, data: issues, total: issues.length });
+    res.json({ success: true, data: issues, nextCursor: hasMore ? issues[issues.length - 1].id : undefined });
   } catch (error: any) {
-    if (error.message.includes('index')) {
-        try {
-            const db = getTargetFirestore();
-            const snapshot = await db.collection('issues').get();
-            let all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-            if (status) all = all.filter(a => a.status === status);
-            if (severity) all = all.filter(a => a.severity === severity);
-            if (device_id) all = all.filter(a => a.device_id === String(device_id));
-            if (search) {
-              const term = (search as string).toLowerCase();
-              all = all.filter((i: any) => 
-                (i.issue_code && i.issue_code.toLowerCase().includes(term)) ||
-                (i.title && i.title.toLowerCase().includes(term)) ||
-                (i.content && i.content.toLowerCase().includes(term)) ||
-                (i.device_name && i.device_name.toLowerCase().includes(term)) ||
-                (i.device_code && i.device_code.toLowerCase().includes(term))
-              );
-            }
-            all.sort((a, b) => {
-              const sevWeight = { 'CRITICAL': 1, 'HIGH': 2, 'MEDIUM': 3, 'LOW': 4 };
-              const wA = sevWeight[a.severity as keyof typeof sevWeight] || 5;
-              const wB = sevWeight[b.severity as keyof typeof sevWeight] || 5;
-              if (wA !== wB) return wA - wB;
-              return (b.reported_at || '').localeCompare(a.reported_at || '');
-            });
-            return res.json({ success: true, data: all, total: all.length });
-        } catch(e:any) {
-            return res.status(500).json({ success: false, message: e.message });
-        }
-    }
-    res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách bất thường' });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -251,7 +211,7 @@ router.put('/:id/status', async (req: AuthenticatedRequest, res: Response) => {
 router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const db = getTargetFirestore();
-    await db.collection('issues').doc(req.params.id).delete();
+    await db.collection('issues').doc(req.params.id).update({ isDeleted: true, deleted_at: new Date().toISOString() });
     res.json({ success: true, message: 'Xóa bất thường thành công' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Lỗi khi xóa thông tin bất thường' });

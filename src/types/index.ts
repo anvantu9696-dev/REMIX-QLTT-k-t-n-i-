@@ -126,6 +126,7 @@ export type Relay79Status = 'ON' | 'OFF' | 'N_A';
 export type SubstationStatus = 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
 
 export interface Substation {
+  version?: number;
   id: number;
   substation_code: string;
   name: string;
@@ -144,6 +145,7 @@ export interface Substation {
 }
 
 export interface Feeder {
+  version?: number;
   id: number;
   feeder_code: string;
   name: string;

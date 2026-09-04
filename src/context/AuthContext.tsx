@@ -23,12 +23,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const initialLoadRef = React.useRef(true);
 
   useEffect(() => {
     const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
-      // Only set loading to true if we don't have a user yet (initial load)
-      // If we already have a user, we perform the sync in the background without clearing the UI.
-      if (!user) setIsLoading(true);
+      if (initialLoadRef.current) {
+        setIsLoading(true);
+      }
 
       if (firebaseUser) {
         try {
@@ -84,6 +85,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setAuthToken(null);
       }
       setIsLoading(false);
+      initialLoadRef.current = false;
     });
     return () => unsubscribe();
   }, []);

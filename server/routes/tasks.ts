@@ -49,34 +49,38 @@ async function recordTaskHistory(taskId: string, user: any, action: string, acti
 
 // 1. GET /api/tasks - List all (STAFF only sees their own)
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
-  const { status, priority, search } = req.query;
+  const { status, priority, limit = '50', lastDocId } = req.query;
   try {
     const db = getTargetFirestore();
     let query: any = db.collection('tasks').where('deleted_at', '==', null);
-
     if (status) query = query.where('status', '==', status);
     if (priority) query = query.where('priority', '==', priority);
 
-    // RBAC: STAFF sees assigned, ADMIN/MANAGER sees all
     const isStaff = (!isManagerOrAdmin(req.user) && !req.user!.roles.includes("SHIFT_LEADER")) && req.user!.roles.includes('STAFF');
     if (isStaff) {
       query = query.where('assigned_to_username', '==', req.user!.username);
     }
+    
+    query = query.orderBy('created_at', 'desc');
 
-    const snapshot = await query.get();
-    let tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    if (search) {
-      const s = (search as string).toLowerCase();
-      tasks = tasks.filter((t: any) => 
-        (t.title || '').toLowerCase().includes(s) || 
-        (t.task_code || '').toLowerCase().includes(s) || 
-        (t.assigned_to_username || '').toLowerCase().includes(s)
-      );
+    const parsedLimit = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 100);
+    
+    if (lastDocId) {
+      const lastDoc = await db.collection('tasks').doc(lastDocId as string).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
     }
 
-    tasks.sort((a, b) => new Date((b as any).created_at || 0).getTime() - new Date((a as any).created_at || 0).getTime());
-    res.json({ success: true, data: tasks });
+    const snapshot = await query.limit(parsedLimit + 1).get();
+    let tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const hasMore = tasks.length > parsedLimit;
+    if (hasMore) {
+        tasks.pop();
+    }
+
+    res.json({ success: true, data: tasks, nextCursor: hasMore ? tasks[tasks.length - 1].id : undefined });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi' });
   }
@@ -84,17 +88,43 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 
 // 2. GET /api/tasks/my-tasks
 router.get('/my-tasks', async (req: AuthenticatedRequest, res: Response) => {
+  const { status, priority, limit = '50', lastDocId } = req.query;
   try {
     const db = getTargetFirestore();
-    const snapshot = await db.collection('tasks')
+    let query: any = db.collection('tasks')
       .where('assigned_to_username', '==', req.user!.username)
-      .where('deleted_at', '==', null)
-      .get();
-    const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter((t: any) => !['COMPLETED', 'CANCELLED'].includes(t.status))
-      .sort((a, b) => new Date((b as any).created_at || 0).getTime() - new Date((a as any).created_at || 0).getTime());
-    res.json({ success: true, data: tasks });
-  } catch (err) {
+      .where('deleted_at', '==', null);
+      
+    if (status) query = query.where('status', '==', status);
+    if (priority) query = query.where('priority', '==', priority);
+    
+    query = query.orderBy('created_at', 'desc');
+
+    const parsedLimit = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 100);
+    if (lastDocId) {
+      const lastDoc = await db.collection('tasks').doc(lastDocId as string).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+    
+    // We add +20 to limit just in case some are filtered out in memory for archived logic
+    const snapshot = await query.limit(parsedLimit + 20).get();
+    let tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Memory filter for active tasks (not completed/cancelled) 
+    // This is because we don't have a composite index for status + assigned_to_username
+    if (!status) {
+        tasks = tasks.filter((t: any) => !['COMPLETED', 'CANCELLED'].includes(t.status));
+    }
+    
+    const hasMore = tasks.length > parsedLimit;
+    if (hasMore) {
+        tasks = tasks.slice(0, parsedLimit);
+    }
+    
+    res.json({ success: true, data: tasks, nextCursor: hasMore ? tasks[tasks.length - 1].id : undefined });
+  } catch (err: any) {
     res.status(500).json({ success: false, message: 'Lỗi' });
   }
 });
@@ -114,7 +144,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
     }
 
     res.json({ success: true, data: { id: doc.id, ...task } });
-  } catch (err) {
+  } catch (err: any) {
     res.status(500).json({ success: false, message: 'Lỗi' });
   }
 });
@@ -135,7 +165,8 @@ router.post('/', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedReq
       progress: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      deleted_at: null
+      deleted_at: null,
+      isDeleted: false
     };
 
     const ref = await db.collection('tasks').add(taskData);
@@ -145,7 +176,7 @@ router.post('/', requireRole(['ADMIN', 'MANAGER']), async (req: AuthenticatedReq
     broadcastRealtimeEvent({ type: 'CREATE', entity: 'TASK', action: 'CREATE', id: ref.id, data: taskData });
 
     res.json({ success: true, message: 'Tạo công việc thành công', data: { id: ref.id, ...taskData } });
-  } catch (err) {
+  } catch (err: any) {
     res.status(500).json({ success: false, message: 'Lỗi' });
   }
 });
@@ -164,7 +195,7 @@ async function updateTaskStatus(req: AuthenticatedRequest, res: Response, allowe
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
-    const updates = {
+    const updates: any = {
       status: targetStatus,
       updated_at: new Date().toISOString(),
       ...extraData
@@ -178,7 +209,7 @@ async function updateTaskStatus(req: AuthenticatedRequest, res: Response, allowe
     const notes = req.body.notes || req.body.reason || '';
     await recordTaskHistory(doc.id, req.user, actionCode, actionLabel, task.status, targetStatus, defaultProgress ?? task.progress ?? 0, notes);
 
-    broadcastRealtimeEvent({ type: 'UPDATE', entity: 'TASK', action: 'STATUS', id: doc.id, data: { status: targetStatus } });
+    broadcastRealtimeEvent({ type: 'UPDATE', entity: 'TASK', action: actionCode, id: doc.id, data: { status: targetStatus, ...updates } });
 
     res.json({ success: true, message: 'Đã cập nhật' });
   } catch (err) {
@@ -204,19 +235,21 @@ router.put('/:id/progress', async (req: AuthenticatedRequest, res: Response) => 
     await ref.update({ progress, updated_at: new Date().toISOString() });
     await recordTaskHistory(doc.id, req.user, 'CAP_NHAT_TIEN_DO', 'Cập nhật tiến độ', task.status, task.status, progress, notes);
 
+    broadcastRealtimeEvent({ type: 'UPDATE', entity: 'TASK', action: 'PROGRESS', id: doc.id, data: { progress, notes } });
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
   }
 });
 
-router.post('/:id/submit-results', (req, res) => updateTaskStatus(req, res, isTaskAssignee, 'REVIEWING', 'BAO_CAO_KET_QUA', 'Báo cáo KQ', 100));
-router.post('/:id/approve', (req, res) => updateTaskStatus(req, res, (t, u) => isCreator(t, u) || isManagerOrAdmin(u), 'COMPLETED', 'PHE_DUYET', 'Phê duyệt', 100));
+router.post('/:id/submit-results', (req, res) => updateTaskStatus(req, res, isTaskAssignee, 'REVIEWING', 'BAO_CAO_KET_QUA', 'Báo cáo KQ', 100, { results: req.body.results || [] }));
+router.post('/:id/approve', (req, res) => updateTaskStatus(req, res, (t, u) => isCreator(t, u) || isManagerOrAdmin(u), 'COMPLETED', 'PHE_DUYET', 'Phê duyệt', 100, { approval_notes: req.body.approval_notes || '' }));
 router.post('/:id/reject-completion', (req, res) => updateTaskStatus(req, res, (t, u) => isCreator(t, u) || isManagerOrAdmin(u), 'IN_PROGRESS', 'TU_CHOI_KET_QUA', 'Từ chối KQ', null, { return_reason: req.body.reason }));
-router.post('/:id/return', (req, res) => updateTaskStatus(req, res, isTaskAssignee, 'RETURNED', 'TRA_LAI', 'Trả lại', null, { return_reason: req.body.reason }));
-router.post('/:id/pause', (req, res) => updateTaskStatus(req, res, isTaskAssignee, 'PAUSED', 'TAM_DUNG', 'Tạm dừng', null, { pause_reason: req.body.reason }));
+router.post('/:id/return', (req, res) => updateTaskStatus(req, res, isTaskAssignee, 'RETURNED', 'TRA_LAI', 'Trả lại', null, { return_reason: req.body.reason || req.body.return_reason }));
+router.post('/:id/pause', (req, res) => updateTaskStatus(req, res, isTaskAssignee, 'PAUSED', 'TAM_DUNG', 'Tạm dừng', null, { pause_reason: req.body.reason || req.body.pause_reason }));
 router.post('/:id/resume', (req, res) => updateTaskStatus(req, res, isTaskAssignee, 'IN_PROGRESS', 'TIEP_TUC', 'Tiếp tục', null, { pause_reason: null }));
-router.post('/:id/cancel', (req, res) => updateTaskStatus(req, res, (t, u) => isCreator(t, u) || isManagerOrAdmin(u), 'CANCELLED', 'HUY_CONG_VIEC', 'Hủy', null, { cancel_reason: req.body.reason }));
+router.post('/:id/cancel', (req, res) => updateTaskStatus(req, res, (t, u) => isCreator(t, u) || isManagerOrAdmin(u), 'CANCELLED', 'HUY_CONG_VIEC', 'Hủy', null, { cancel_reason: req.body.reason || req.body.cancel_reason }));
 
 router.put('/:id/status', (req, res) => {
   const target = req.body.status;
@@ -254,7 +287,7 @@ router.delete('/:id', requireRole(['ADMIN', 'MANAGER']), async (req: Authenticat
       return res.status(403).json({ success: false });
     }
 
-    await ref.update({ deleted_at: new Date().toISOString() });
+    await ref.update({ deleted_at: new Date().toISOString(), isDeleted: true });
     broadcastRealtimeEvent({ type: 'DELETE', entity: 'TASK', action: 'DELETE', id: doc.id });
     res.json({ success: true });
   } catch (err) {

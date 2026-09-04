@@ -138,7 +138,7 @@ router.get('/data', async (req: AuthenticatedRequest, res) => {
         query = query.orderBy('createdAt', 'desc');
     }
 
-    const snap = await query.get();
+    const snap = await query.limit(2000).get();
     let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     if (fromDate || toDate) {

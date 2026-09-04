@@ -30,10 +30,12 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
-  ChevronRight
+  ChevronRight,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useDataContext } from '../../context/DataContext';
 import { api } from '../../lib/api';
 import { NotificationCenter } from '../NotificationCenter';
 import { LogoutModal } from '../common/LogoutModal';
@@ -59,6 +61,7 @@ interface MenuItem {
 export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, children }) => {
   const { user, logout, hasRole, isGuest, isRealAdmin } = useAuth();
   const { theme, resolvedTheme, toggleTheme } = useTheme();
+  const { syncAllData, isSyncing, filterDevices } = useDataContext();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
@@ -73,34 +76,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
         setShowResults(false);
       }
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   useEffect(() => {
-    if (!globalSearch.trim() || globalSearch.trim().length < 2) {
+    const term = globalSearch.trim();
+    if (!term || term.length < 2) {
       setSearchResults([]);
       setShowResults(false);
       return;
     }
 
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      setShowResults(true);
-      try {
-        const response = await api.getDevices({ search: globalSearch.trim(), limit: 6 });
-        if (response.success) {
-          setSearchResults(response.data as Device[]);
-        }
-      } catch (error) {
-        console.error('Search failed:', error);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [globalSearch]);
+    setIsSearching(true);
+    setShowResults(true);
+    const results = filterDevices({ search: term }).slice(0, 6);
+    setSearchResults(results);
+    setIsSearching(false);
+  }, [globalSearch, filterDevices]);
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, path: '/' },
@@ -466,6 +460,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPath, onNavigate, c
             </div>
 
 
+
+            {/* Sync Data Button */}
+            <button
+              onClick={() => syncAllData()}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed rounded-xl transition-all border border-slate-200/80 dark:border-slate-700/80 shadow-xs"
+              title="Đồng bộ lại dữ liệu mới nhất (Thiết bị, Phát tuyến, Trạm)"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Đồng bộ</span>
+            </button>
 
             {/* Dark / Light Mode Toggle */}
             <button

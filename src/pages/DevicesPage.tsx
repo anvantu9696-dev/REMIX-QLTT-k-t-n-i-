@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Zap, Plus, Search, Building2, GitCommitHorizontal, MapPin, Edit2, Trash2, Eye, AlertCircle, X, CheckCircle2, ExternalLink, ShieldAlert, Activity, Layers, Check, AlertTriangle, Radio, Download, Compass, LayoutGrid, List, Upload, Camera, QrCode } from 'lucide-react';
 import { api } from '../lib/api';
 import { normalizeDeviceRelations } from '../utils/deviceNormalizer';
 import { Device, Substation, Feeder, DeviceType, SwitchStatus, ScadaStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import { DeviceProposalModal } from '../components/devices/DeviceProposalModal';
 import { GeoCameraCaptureModal } from '../components/devices/GeoCameraCaptureModal';
 import { ZaloQRShareModal } from '../components/devices/ZaloQRShareModal';
@@ -13,29 +15,42 @@ import { BulkStatusModal } from '../components/devices/BulkStatusModal';
 import { BulkExportModal } from '../components/devices/BulkExportModal';
 import { useRealtimeSync } from '../lib/realtime';
 import { DEVICE_IMAGE_FEATURE_ENABLED } from '../../server/config';
+
 interface DevicesPageProps {
   onNavigateToDetail: (deviceId: number | string) => void;
   initialFeederId?: number | string;
 }
+
 export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, initialFeederId }) => {
   const { user, isGuest, hasRole } = useAuth();
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [substations, setSubstations] = useState<Substation[]>([]);
-  const [feeders, setFeeders] = useState<Feeder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const {
+    devices,
+    substations,
+    feeders,
+    loadingDevices,
+    fetchDevices,
+    fetchSubstations,
+    fetchFeeders,
+    addDeviceInCache,
+    updateDeviceInCache,
+    deleteDeviceFromCache
+  } = useDataContext();
+
+  const [loading, setLoading] = useState(false);
   const feedersCache = useRef<Record<string, Feeder[]>>({});
   const [formFeeders, setFormFeeders] = useState<Feeder[]>([]);
+
   const getNormalizedRelations = useCallback((device: Device) => {
     return normalizeDeviceRelations(device, substations, feeders);
   }, [substations, feeders]);
+
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkStatusModalOpen, setBulkStatusModalOpen] = useState(false);
   const [bulkExportModalOpen, setBulkExportModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [stationFilter, setStationFilter] = useState('');
   const [feederFilter, setFeederFilter] = useState<string>(initialFeederId ? String(initialFeederId) : '');
+
   useEffect(() => {
     if (initialFeederId !== undefined) {
       setFeederFilter(String(initialFeederId));
@@ -43,6 +58,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       setFeederFilter('');
     }
   }, [initialFeederId]);
+
   const [typeFilter, setTypeFilter] = useState('');
   const [switchFilter, setSwitchFilter] = useState('');
   const [scadaFilter, setScadaFilter] = useState('');
@@ -50,7 +66,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
   const [sortBy, setSortBy] = useState<string>('device_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
-  const [totalDevicesCount, setTotalDevicesCount] = useState<number>(0);
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -62,6 +78,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
   const [zaloQRModalOpen, setZaloQRModalOpen] = useState(false);
   const [zaloQRDevice, setZaloQRDevice] = useState<Device | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+
   const [formData, setFormData] = useState({
     device_id: '',
     device_code: '',
@@ -84,6 +101,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     notes: '',
     current_setting: ''
   });
+
   const [idChecking, setIdChecking] = useState(false);
   const [idConflict, setIdConflict] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
@@ -98,123 +116,26 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     schedules: any[];
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
   useEffect(() => {
-    const init = async () => {
-      await fetchMetadata();
-      await fetchDevices({ limit: 10 });
-    };
-    init();
-  }, []);
-  useEffect(() => {
-    if (substations.length > 0 || feeders.length > 0) {
-      fetchDevices({ limit: 10 });
-    }
-  }, [search, stationFilter, feederFilter, typeFilter, switchFilter, scadaFilter, batteryFilter]);
+    fetchDevices();
+    fetchSubstations();
+    fetchFeeders();
+  }, [fetchDevices, fetchSubstations, fetchFeeders]);
+
+  useRealtimeSync(() => {
+    fetchDevices(true);
+    fetchSubstations(true);
+    fetchFeeders(true);
+  });
 
   const fetchFeedersBySubstation = async (subId: string) => {
     if (!subId) {
       setFormFeeders([]);
       return;
     }
-    if (feedersCache.current[subId]) {
-      setFormFeeders(feedersCache.current[subId]);
-      return;
-    }
-    try {
-      let allFeeders: Feeder[] = [];
-      let lastDocId: string | undefined = undefined;
-      while (true) {
-        const res = await api.getFeeders({ substation_id: subId, limit: 100, lastDocId });
-        if (res.success && res.data.length > 0) {
-          allFeeders = [...allFeeders, ...res.data];
-          if (res.nextCursor) {
-            lastDocId = res.nextCursor;
-          } else {
-            break;
-          }
-        } else {
-          break;
-        }
-      }
-      feedersCache.current[subId] = allFeeders;
-      setFormFeeders(allFeeders);
-    } catch (e) {
-      console.error('Lỗi tải phát tuyến:', e);
-    }
-  };
-
-  const fetchMetadata = async () => {
-    try {
-      let allSubs: Substation[] = [];
-      let lastDocId: string | undefined = undefined;
-      while (true) {
-        const stRes = await api.getSubstations({ limit: 100, lastDocId });
-        if (stRes.success && stRes.data.length > 0) {
-          allSubs = [...allSubs, ...stRes.data];
-          if (stRes.nextCursor) {
-            lastDocId = stRes.nextCursor;
-          } else {
-            break;
-          }
-        } else {
-          break;
-        }
-      }
-      setSubstations(allSubs);
-
-      const allDevRes = await api.getDevices({ limit: 10 });
-      if (allDevRes.success) setTotalDevicesCount(allDevRes.data.length);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-  const fetchDevices = async (options?: any) => {
-    setLoading(true);
-    try {
-      const params: any = {};
-      if (search) params.search = search;
-      if (stationFilter) params.substation_id = stationFilter;
-      if (feederFilter) params.feeder_id = feederFilter;
-      if (typeFilter) params.type = typeFilter;
-      if (switchFilter) params.switch_status = switchFilter;
-      if (scadaFilter) params.scada_status = scadaFilter;
-      if (batteryFilter) params.battery_status = batteryFilter;
-      params.limit = 10;
-      const res = await api.getDevices(params);
-      if (res.success) {
-        setDevices(res.data);
-        setNextCursor(res.nextCursor || null);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Không thể tải danh sách thiết bị');
-    } finally {
-      setLoading(false);
-    }
-  };
-  const loadMore = async () => {
-    if (!nextCursor) return;
-    setLoadingMore(true);
-    try {
-      const params: any = {};
-      if (search) params.search = search;
-      if (stationFilter) params.substation_id = stationFilter;
-      if (feederFilter) params.feeder_id = feederFilter;
-      if (typeFilter) params.type = typeFilter;
-      if (switchFilter) params.switch_status = switchFilter;
-      if (scadaFilter) params.scada_status = scadaFilter;
-      if (batteryFilter) params.battery_status = batteryFilter;
-      params.limit = 10;
-      params.lastDocId = nextCursor;
-      const res = await api.getDevices(params);
-      if (res.success) {
-        setDevices(prev => [...prev, ...res.data]);
-        setNextCursor(res.nextCursor || null);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Không thể tải thêm thiết bị');
-    } finally {
-      setLoadingMore(false);
-    }
+    const filtered = feeders.filter(f => String(f.substation_id) === String(subId));
+    setFormFeeders(filtered);
   };
   const checkDeviceIdUnique = useCallback(async (idVal: string, excludeDbId?: number) => {
     if (!idVal || !idVal.trim()) {
@@ -317,17 +238,45 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     }
     setSubmitting(true);
     try {
-      if (editingDevice) {
-        await api.updateDevice(editingDevice.id, formData);
-        setSuccess(`Đã cập nhật thông tin thiết bị ${formData.name}`);
+      const payload: any = { ...formData };
+      if (payload.latitude === "" || payload.latitude === null) {
+        payload.latitude = null;
       } else {
-        await api.createDevice(formData);
-        setSuccess(`Đã tạo thành công thiết bị ${formData.name}`);
+        payload.latitude = parseFloat(payload.latitude);
+      }
+      
+      if (payload.longitude === "" || payload.longitude === null) {
+        payload.longitude = null;
+      } else {
+        payload.longitude = parseFloat(payload.longitude);
+      }
+
+      if (editingDevice) {
+        const res = await api.updateDevice(editingDevice.id, payload, undefined, editingDevice.version);
+        setSuccess(`Đã cập nhật thông tin thiết bị ${payload.name}`);
+        const updated = res.data ? res.data : { ...editingDevice, ...payload };
+        updateDeviceInCache(editingDevice.id, updated);
+      } else {
+        const res = await api.createDevice(payload);
+        setSuccess(`Đã tạo thành công thiết bị ${payload.name}`);
+        if (res.data) {
+          addDeviceInCache(res.data);
+        } else {
+          addDeviceInCache({ id: Date.now(), ...payload } as any);
+        }
       }
       setModalOpen(false);
-      fetchDevices({ limit: 10 });
     } catch (err: any) {
-      setFormError(err.message || 'Lỗi lưu dữ liệu thiết bị');
+      console.error("API Error details:", err, err.data, err.errors);
+      let errorMessage = err.message || 'Lỗi lưu dữ liệu thiết bị';
+      
+      if (err.errors) {
+        errorMessage += ' - Chi tiết: ' + JSON.stringify(err.errors);
+      } else if (err.data && err.data.message && err.data.message !== err.message) {
+        errorMessage += ' - ' + err.data.message;
+      }
+      
+      setFormError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -349,7 +298,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       const res = await api.deleteDevice(deletingDevice.id);
       setSuccess(res.message || `Đã xóa mềm thành công thiết bị ${deletingDevice.name}`);
       setDeleteModalOpen(false);
-      fetchDevices({ limit: 10 });
+      deleteDeviceFromCache(deletingDevice.id);
     } catch (err: any) {
       if (err.status === 409 || err.usage || err.data?.usage) {
         setDeleteError(err.data?.message || err.message || 'Không thể xóa thiết bị vì thiết bị đang được sử dụng trong hệ thống.');
@@ -416,8 +365,27 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
     link.click();
     document.body.removeChild(link);
   };
-  const sortedDevices = React.useMemo(() => {
-    return [...devices].sort((a, b) => {
+
+  const sortedDevices = useMemo(() => {
+    return devices.filter(device => {
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        const matchId = device.device_id?.toLowerCase().includes(q);
+        const matchName = device.name?.toLowerCase().includes(q);
+        const matchPole = device.pole_number?.toLowerCase().includes(q);
+        if (!matchId && !matchName && !matchPole) return false;
+      }
+      if (stationFilter && String(device.substation_id) !== String(stationFilter)) return false;
+      if (feederFilter && String(device.feeder_id) !== String(feederFilter)) return false;
+      if (typeFilter) {
+        if (typeFilter === 'REC' && device.device_type !== 'REC' && device.device_type !== 'RCL') return false;
+        if (typeFilter !== 'REC' && device.device_type !== typeFilter) return false;
+      }
+      if (switchFilter && device.switch_status !== switchFilter) return false;
+      if (scadaFilter && device.scada_status !== scadaFilter) return false;
+      if (batteryFilter && device.battery_status !== batteryFilter) return false;
+      return true;
+    }).sort((a, b) => {
       let valA: any = '';
       let valB: any = '';
       if (sortBy === 'device_id') {
@@ -453,7 +421,8 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       const cmp = String(valA).localeCompare(String(valB), 'vi', { numeric: true, sensitivity: 'base' });
       return sortOrder === 'asc' ? cmp : -cmp;
     });
-  }, [devices, sortBy, sortOrder]);
+  }, [devices, search, stationFilter, feederFilter, typeFilter, switchFilter, scadaFilter, batteryFilter, sortBy, sortOrder]);
+
   const handleSortField = (field: string) => {
     if (sortBy === field) {
       setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -498,7 +467,9 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       });
       if (res.success) {
         setSuccess(res.message || `Đã cập nhật ${selectedIds.length} thiết bị.`);
-        fetchDevices({ limit: 10 });
+        selectedIds.forEach(id => {
+          updateDeviceInCache(id, updates);
+        });
         setSelectedIds([]);
       } else {
         setError(res.message || 'Cập nhật trạng thái thất bại');
@@ -507,6 +478,19 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
       setError(err.message || 'Lỗi khi cập nhật trạng thái');
     }
   };
+
+  const tableParentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: sortedDevices.length,
+    getScrollElement: () => tableParentRef.current,
+    estimateSize: () => 58,
+    overscan: 10,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom = virtualRows.length > 0
+    ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
+    : 0;
   return (
     <div className="space-y-6">
       {}
@@ -812,10 +796,10 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
             <p className="text-xs font-semibold">Không tìm thấy thiết bị nào phù hợp</p>
           </div>
         ) : viewMode === 'list' ? (
-          <div className="overflow-x-auto">
+          <div ref={tableParentRef} className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-900 text-slate-300 uppercase tracking-wider text-[10px] font-bold">
+                <tr className="bg-slate-900 text-slate-300 uppercase tracking-wider text-[10px] font-bold sticky top-0 z-10">
                   <th className="py-3 px-3 text-center w-11">
                     <input
                       ref={headerCheckboxRef}
@@ -837,7 +821,14 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {sortedDevices.map(device => {
+                {paddingTop > 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ height: `${paddingTop}px` }} />
+                  </tr>
+                )}
+                {virtualRows.map(virtualRow => {
+                  const device = sortedDevices[virtualRow.index];
+                  if (!device) return null;
                   const isSelected = selectedIds.includes(device.id);
                   return (
                     <tr
@@ -1010,6 +1001,11 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
                     </tr>
                   );
                 })}
+                {paddingBottom > 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ height: `${paddingBottom}px` }} />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1031,27 +1027,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
             ))}
           </div>
         )}
-        {nextCursor && (
-          <div className="mt-6 flex justify-center">
-            <button
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 flex items-center transition-colors shadow-sm"
-            >
-              {loadingMore ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Đang tải...
-                </>
-              ) : (
-                'Tải thêm thiết bị'
-              )}
-            </button>
-          </div>
-        )}
+        
       </div>
       {}
       {modalOpen && (
@@ -1504,7 +1480,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
         onClose={() => setProposalModalOpen(false)}
         onSuccess={() => {
           setSuccess('Đã gửi đề xuất thành công! Cấp quản lý sẽ xem xét và phê duyệt.');
-          fetchDevices({ limit: 10 });
+          fetchDevices();
         }}
         mode={proposalMode}
         device={proposalTargetDevice}
@@ -1518,7 +1494,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
         selectedDevices={selectedDevices}
         onSuccess={(msg) => {
           setSuccess(msg);
-          fetchDevices({ limit: 10 });
+          fetchDevices();
           setSelectedIds([]);
         }}
       />
@@ -1543,7 +1519,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({ onNavigateToDetail, in
           }}
           onSuccess={() => {
             setSuccess('Đã chụp và lưu ảnh định vị tọa độ thiết bị thành công!');
-            fetchDevices({ limit: 10 });
+            fetchDevices();
           }}
         />
       )}

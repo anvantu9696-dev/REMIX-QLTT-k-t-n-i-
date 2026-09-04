@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   GitCommitHorizontal,
   Plus,
@@ -15,6 +16,7 @@ import {
 import { api } from '../lib/api';
 import { Feeder, Substation } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import { useRealtimeSync } from '../lib/realtime';
 
 interface UsageDetails {
@@ -37,11 +39,18 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
   selectedSubstationId
 }) => {
   const { isGuest, hasRole } = useAuth();
-  const [feeders, setFeeders] = useState<any[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [substations, setSubstations] = useState<Substation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    feeders,
+    substations,
+    loadingFeeders,
+    fetchFeeders,
+    fetchSubstations,
+    addFeederInCache,
+    updateFeederInCache,
+    deleteFeederFromCache
+  } = useDataContext();
+
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [substationFilter, setSubstationFilter] = useState<string>(selectedSubstationId ? String(selectedSubstationId) : '');
   
@@ -57,6 +66,15 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
   const [statusFilter, setStatusFilter] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const substationMap = useMemo(() => {
+    const map = new Map<string, string>();
+    substations.forEach(s => {
+      map.set(String(s.id), s.name || s.substation_code || `Trạm ${s.id}`);
+      if (s.substation_code) map.set(s.substation_code.toUpperCase(), s.name);
+    });
+    return map;
+  }, [substations]);
 
   // Add / Edit Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -85,86 +103,28 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
   } | null>(null);
 
   useEffect(() => {
-    fetchSubstationsList();
-  }, []);
-
-  useEffect(() => {
     fetchFeeders();
-  }, [search, substationFilter, statusFilter]);
+    fetchSubstations();
+  }, [fetchFeeders, fetchSubstations]);
 
   useRealtimeSync(() => {
-    fetchFeeders();
-    fetchSubstationsList();
+    fetchFeeders(true);
+    fetchSubstations(true);
   });
 
-  const fetchSubstationsList = async (options?: {forceRefresh?: boolean}) => {
-    try {
-      let allSubs: Substation[] = [];
-      let lastDocId: string | undefined = undefined;
-      while (true) {
-        const res = await api.getSubstations({ limit: 100, lastDocId }, options);
-        if (res.success && res.data.length > 0) {
-          allSubs = [...allSubs, ...res.data];
-          if (res.nextCursor) {
-            lastDocId = res.nextCursor;
-          } else {
-            break;
-          }
-        } else {
-          break;
-        }
+  const filteredFeeders = useMemo(() => {
+    return feeders.filter(feeder => {
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        const matchCode = feeder.feeder_code?.toLowerCase().includes(q);
+        const matchName = feeder.name?.toLowerCase().includes(q);
+        if (!matchCode && !matchName) return false;
       }
-      setSubstations(allSubs);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchFeeders = async (options?: {forceRefresh?: boolean}) => {
-    setLoading(true);
-    try {
-      const res = await api.getFeeders({
-        search,
-        substation_id: substationFilter,
-        status: statusFilter,
-        limit: 10
-      }, options);
-      if (res.success) {
-        setFeeders(res.data);
-        setNextCursor(res.nextCursor || null);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Không thể tải danh sách Phát tuyến');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadMore = async () => {
-    if (!nextCursor) return;
-    setLoadingMore(true);
-    try {
-      const res = await api.getFeeders({
-        search,
-        substation_id: substationFilter,
-        status: statusFilter,
-        limit: 10,
-        lastDocId: nextCursor
-      });
-      if (res.success) {
-        setFeeders(prev => {
-          const existing = new Set(prev.map(f => f.id));
-          const newItems = res.data.filter(f => !existing.has(f.id));
-          return [...prev, ...newItems];
-        });
-        setNextCursor(res.nextCursor || null);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Không thể tải thêm danh sách Phát tuyến');
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+      if (substationFilter && String(feeder.substation_id) !== String(substationFilter)) return false;
+      if (statusFilter && feeder.status !== statusFilter) return false;
+      return true;
+    });
+  }, [feeders, search, substationFilter, statusFilter]);
 
   const handleOpenAddModal = () => {
     if (isGuest()) return;
@@ -210,14 +170,20 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
     setSubmitting(true);
     try {
       if (editingFeeder) {
-        await api.updateFeeder(editingFeeder.id, formData);
+        const res = await api.updateFeeder(editingFeeder.id, formData, undefined, editingFeeder.version);
         setSuccess(`Cập nhật thành công phát tuyến ${formData.name}`);
+        const updated = res.data ? res.data : { ...editingFeeder, ...formData };
+        updateFeederInCache(editingFeeder.id, updated);
       } else {
-        await api.createFeeder(formData);
+        const res = await api.createFeeder(formData);
         setSuccess(`Thêm mới phát tuyến ${formData.name}`);
+        if (res.data) {
+          addFeederInCache(res.data);
+        } else {
+          addFeederInCache({ id: Date.now(), ...formData } as any);
+        }
       }
       setModalOpen(false);
-      fetchFeeders();
     } catch (err: any) {
       setFormError(err.message || 'Lỗi khi lưu phát tuyến');
     } finally {
@@ -244,7 +210,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
       const res = await api.deleteFeeder(targetFeeder.id);
       setSuccess(res.message || `Đã xóa thành công phát tuyến "${targetFeeder.name}"`);
       setDeleteConfirmFeeder(null);
-      fetchFeeders();
+      deleteFeederFromCache(targetFeeder.id);
     } catch (err: any) {
       const targetFeeder = deleteConfirmFeeder;
       setDeleteConfirmFeeder(null);
@@ -279,13 +245,26 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
     try {
       const res = await api.deleteFeeder(targetFeeder.id, crypto.randomUUID(), true);
       setSuccess(res.message || `Đã cưỡng chế xóa thành công phát tuyến "${targetFeeder.name}"`);
-      fetchFeeders();
+      deleteFeederFromCache(targetFeeder.id);
     } catch (err: any) {
       setError(err.message || 'Không thể cưỡng chế xóa phát tuyến');
     } finally {
       setDeleting(false);
     }
   };
+
+  const tableParentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredFeeders.length,
+    getScrollElement: () => tableParentRef.current,
+    estimateSize: () => 52,
+    overscan: 10,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom = virtualRows.length > 0
+    ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -370,21 +349,21 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
 
       {/* Feeders Table View */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {loading ? (
+        {loadingFeeders ? (
           <div className="py-12 flex justify-center text-slate-500 text-xs font-medium">
             <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mr-2" />
             Đang tải dữ liệu Phát tuyến...
           </div>
-        ) : feeders.length === 0 ? (
+        ) : filteredFeeders.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <GitCommitHorizontal className="w-10 h-10 mx-auto text-slate-300 mb-2" />
             <p className="text-xs font-semibold">Không tìm thấy phát tuyến nào phù hợp</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div ref={tableParentRef} className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-900 text-slate-300 uppercase tracking-wider text-[10px] font-bold">
+                <tr className="bg-slate-900 text-slate-300 uppercase tracking-wider text-[10px] font-bold sticky top-0 z-10">
                   <th className="py-3 px-4">Mã Phát Tuyến</th>
                   <th className="py-3 px-4">Tên Phát Tuyến</th>
                   <th className="py-3 px-4">Trạm 110kV Phụ Trách</th>
@@ -395,83 +374,97 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {feeders.map(feeder => (
-                  <tr key={feeder.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-blue-600">
-                      {feeder.feeder_code}
-                    </td>
-
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      {feeder.name}
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-1.5 font-semibold text-slate-800">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{feeder.substation_name || 'N/A'}</span>
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-[11px] text-slate-600">
-                      <div className="flex items-center gap-1">
-                        <span className="font-semibold text-slate-800">{feeder.start_point || 'Đầu tuyến'}</span>
-                        <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span className="font-semibold text-slate-800">{feeder.end_point || 'Cuối tuyến'}</span>
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800">
-                        <Zap className="w-3 h-3 mr-1 text-amber-500" />
-                        {feeder.device_count || 0}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        feeder.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {feeder.status === 'ACTIVE' ? 'Đang VH' : 'Tạm dừng'}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {onNavigateToDevices && (
-                          <button
-                            onClick={() => onNavigateToDevices(feeder.id)}
-                            className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold rounded hover:bg-blue-100 transition-colors"
-                          >
-                            Thiết bị
-                          </button>
-                        )}
-
-                        {!isGuest() && (
-                          <>
-                            {(hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
-                              <button
-                                onClick={() => handleOpenEditModal(feeder)}
-                                className="p-1.5 text-slate-600 hover:text-blue-600 rounded hover:bg-slate-100 transition-colors"
-                                title="Sửa phát tuyến"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                            )}
-                            {hasRole('ADMIN') && (
-                              <button
-                                onClick={() => handleOpenDeleteConfirm(feeder)}
-                                className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 transition-colors"
-                                title="Xóa mềm phát tuyến"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
+                {paddingTop > 0 && (
+                  <tr>
+                    <td colSpan={7} style={{ height: `${paddingTop}px` }} />
                   </tr>
-                ))}
+                )}
+                {virtualRows.map(virtualRow => {
+                  const feeder = filteredFeeders[virtualRow.index];
+                  if (!feeder) return null;
+                  return (
+                    <tr key={feeder.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600">
+                        {feeder.feeder_code}
+                      </td>
+
+                      <td className="py-3.5 px-4 font-bold text-slate-900">
+                        {feeder.name}
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{feeder.substation_name || substationMap.get(String(feeder.substation_id)) || 'N/A'}</span>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-[11px] text-slate-600">
+                        <div className="flex items-center gap-1">
+                          <span className="font-semibold text-slate-800">{feeder.start_point || 'Đầu tuyến'}</span>
+                          <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="font-semibold text-slate-800">{feeder.end_point || 'Cuối tuyến'}</span>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800">
+                          <Zap className="w-3 h-3 mr-1 text-amber-500" />
+                          {feeder.device_count || 0}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          feeder.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {feeder.status === 'ACTIVE' ? 'Đang VH' : 'Tạm dừng'}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {onNavigateToDevices && (
+                            <button
+                              onClick={() => onNavigateToDevices(feeder.id)}
+                              className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold rounded hover:bg-blue-100 transition-colors"
+                            >
+                              Thiết bị
+                            </button>
+                          )}
+
+                          {!isGuest() && (
+                            <>
+                              {(hasRole('ADMIN') || (hasRole('MANAGER') || hasRole('SHIFT_LEADER'))) && (
+                                <button
+                                  onClick={() => handleOpenEditModal(feeder)}
+                                  className="p-1.5 text-slate-600 hover:text-blue-600 rounded hover:bg-slate-100 transition-colors"
+                                  title="Sửa phát tuyến"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              {hasRole('ADMIN') && (
+                                <button
+                                  onClick={() => handleOpenDeleteConfirm(feeder)}
+                                  className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 transition-colors"
+                                  title="Xóa mềm phát tuyến"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {paddingBottom > 0 && (
+                  <tr>
+                    <td colSpan={7} style={{ height: `${paddingBottom}px` }} />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -650,7 +643,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
                 </div>
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                   <span className="text-slate-500 font-medium">Trạm 110kV phụ trách:</span>
-                  <span className="font-semibold text-slate-800">{deleteConfirmFeeder.substation_name || 'N/A'}</span>
+                  <span className="font-semibold text-slate-800">{deleteConfirmFeeder.substation_name || substationMap.get(String(deleteConfirmFeeder.substation_id)) || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                   <span className="text-slate-500 font-medium">Số thiết bị liên kết:</span>
@@ -888,17 +881,7 @@ export const FeedersPage: React.FC<FeedersPageProps> = ({
           </div>
         </div>
       )}
-      {nextCursor && (
-        <div className="mt-6 flex justify-center pb-6">
-          <button
-            onClick={loadMore}
-            disabled={loadingMore}
-            className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center transition-colors shadow-sm font-medium"
-          >
-            {loadingMore ? 'Đang tải...' : 'Tải thêm phát tuyến'}
-          </button>
-        </div>
-      )}
+      
     </div>
   );
 };

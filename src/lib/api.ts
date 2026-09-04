@@ -86,17 +86,17 @@ async function request<T>(endpoint: string, options: CustomRequestInit = {}): Pr
         }
         let message = data?.message;
         if (response.status === 413) {
-          message = data?.message || '���nh v�����t qu�� dung l�����ng cho ph��p (413). H��� th���ng ���� t��� �����ng n��n ���nh nh��ng v���n v�����t gi���i h���n, vui l��ng ch���n ���nh nh��� h��n.';
+          message = data?.message || 'Ảnh vượt quá dung lượng cho phép (413). Hệ thống đã tự động nén ảnh nhưng vẫn vượt giới hạn, vui lòng chọn ảnh nhỏ hơn.';
         } else if (response.status === 401) {
-          message = data?.message || 'Phi��n ����ng nh���p h���t h���n. Vui l��ng ����ng nh���p l���i.';
+          message = data?.message || 'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.';
         } else if (response.status === 403) {
-          message = data?.message || 'B���n kh��ng c�� quy���n th���c hi���n thao t��c n��y.';
+          message = data?.message || 'Bạn không có quyền thực hiện thao tác này.';
         } else if (response.status === 404) {
-          message = data?.message || 'Kh��ng t��m th���y API ho���c �������ng d���n y��u c���u (404).';
+          message = data?.message || 'Không tìm thấy API hoặc đường dẫn yêu cầu (404).';
         } else if (response.status >= 500) {
-          message = data?.message || 'M��y ch��� g���p l���i khi x��� l�� y��u c���u ho���c d��� li���u.';
+          message = data?.message || 'Máy chủ gặp lỗi khi xử lý yêu cầu hoặc dữ liệu.';
         }
-        const error: any = new Error(message || `L���i y��u c���u h��� th���ng (${response.status})`);
+        const error: any = new Error(message || `Lỗi yêu cầu hệ thống (${response.status})`);
         error.status = response.status;
         error.data = data;
         error.errors = data?.errors;
@@ -289,25 +289,18 @@ export const api = {
     request<{ success: boolean; roles: any[]; permissions: any[] }>('/roles'),
 
   // Audit Logs
-  getAuditLogs: (params?: { search?: string; module?: string; result?: string; limit?: number; lastDocId?: string }) => {
+  getAuditLogs: (params?: { search?: string; module?: string; action?: string; result?: string; target_id?: string; device_id?: string; limit?: number; lastDocId?: string; lastTimestamp?: string; lastCreatedAt?: string; start_date?: string; end_date?: string }) => {
     const limit = params?.limit || 20;
-    let url = `/audit-logs?limit=${limit}`;
-    if (params?.lastDocId) {
-      url += `&lastDocId=${params.lastDocId}`;
-    }
     const searchParams = new URLSearchParams();
+    searchParams.append('limit', String(limit));
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        if (key !== 'limit' && key !== 'lastDocId' && value !== undefined && value !== null && value !== '') {
+        if (key !== 'limit' && value !== undefined && value !== null && value !== '') {
           searchParams.append(key, String(value));
         }
       });
     }
-    const extra = searchParams.toString();
-    if (extra) {
-      url += `&${extra}`;
-    }
-    return request<{ success: boolean; data: any[]; nextCursor?: string | null; total?: number }>(url);
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null; hasMore?: boolean; total?: number }>(`/audit-logs?${searchParams.toString()}`);
   },
 
   // Dashboard Stats
@@ -383,46 +376,48 @@ export const api = {
 
   // Feeders (Ph��t tuy���n)
   getFeeders: (params?: { search?: string; substation_id?: string | number; status?: string; limit?: number; lastDocId?: string }, options?: CustomRequestInit) => {
-    const limit = params?.limit || 10;
-    let url = `/feeders?limit=${limit}`;
-    if (params?.lastDocId) {
-      url += `&lastDocId=${params.lastDocId}`;
-    }
     const searchParams = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        if (key !== 'limit' && key !== 'lastDocId' && value !== undefined && value !== null && value !== '') {
+        if (value !== undefined && value !== null && value !== '') {
           searchParams.append(key, String(value));
         }
       });
     }
-    const extra = searchParams.toString();
-    if (extra) {
-      url += `&${extra}`;
-    }
-    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url, { ...options });
+    const query = searchParams.toString();
+    const url = `/feeders${query ? '?' + query : ''}`;
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url, { cacheTtl: 86400, ...options });
   },
 
-  getFeeder: (id: number, options?: CustomRequestInit) =>
+  getFeeder: (id: number | string, options?: CustomRequestInit) =>
     request<{ success: boolean; data: any }>(`/feeders/${id}`, { cacheTtl: 43200, ...options }),
 
-  createFeeder: (data: any, operationId?: string) =>
-    request<{ success: boolean; message: string; data: any }>('/feeders', {
+  createFeeder: async (data: any, operationId?: string) => {
+    const res = await request<{ success: boolean; message: string; data: any }>('/feeders', {
       method: 'POST',
       body: JSON.stringify({ ...data, operationId: operationId || crypto.randomUUID() })
-    }),
+    });
+    await invalidateCacheByPrefix('/feeders');
+    return res;
+  },
 
-  updateFeeder: (id: number, data: any, operationId?: string, expectedVersion?: number) =>
-    request<{ success: boolean; message: string; data: any }>(`/feeders/${id}`, {
+  updateFeeder: async (id: number | string, data: any, operationId?: string, expectedVersion?: number) => {
+    const res = await request<{ success: boolean; message: string; data: any }>(`/feeders/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ ...data, operationId: operationId || crypto.randomUUID(), expectedVersion })
-    }),
+    });
+    await invalidateCacheByPrefix('/feeders');
+    return res;
+  },
 
-  deleteFeeder: (id: number, operationId?: string, force?: boolean) =>
-    request<{ success: boolean; message: string }>(`/feeders/${id}${force ? '?force=true' : ''}`, {
+  deleteFeeder: async (id: number | string, operationId?: string, force?: boolean) => {
+    const res = await request<{ success: boolean; message: string }>(`/feeders/${id}${force ? '?force=true' : ''}`, {
       method: 'DELETE',
       body: JSON.stringify({ operationId: operationId || crypto.randomUUID() })
-    }),
+    });
+    await invalidateCacheByPrefix('/feeders');
+    return res;
+  },
 
   // Devices (Thi���t b���)
   checkDeviceId: (deviceId: string, excludeId?: number) => {
@@ -433,24 +428,42 @@ export const api = {
   },
 
   getDevices: (options?: any & CustomRequestInit) => {
-    const limit = options?.limit || 10;
-    let url = `/devices?limit=${limit}`;
-    if (options?.lastDocId) {
-      url += `&lastDocId=${options.lastDocId}`;
-    }
+    let url = '/devices';
     const params = new URLSearchParams();
+    
+    if (options?.updated_after) {
+      params.append('updated_after', String(options.updated_after));
+    } else {
+      const limit = options?.limit || 50;
+      params.append('limit', String(limit));
+      if (options?.lastDocId) {
+        params.append('lastDocId', String(options.lastDocId));
+      }
+    }
+
     if (options) {
       Object.entries(options).forEach(([key, value]) => {
-        if (key !== 'limit' && key !== 'lastDocId' && key !== 'forceRefresh' && key !== 'cacheTtl' && key !== 'signal' && value !== undefined && value !== null && value !== '') {
+        if (
+          key !== 'limit' &&
+          key !== 'lastDocId' &&
+          key !== 'updated_after' &&
+          key !== 'forceRefresh' &&
+          key !== 'cacheTtl' &&
+          key !== 'signal' &&
+          value !== undefined &&
+          value !== null &&
+          value !== ''
+        ) {
           params.append(key, String(value));
         }
       });
     }
+
     const extra = params.toString();
     if (extra) {
-      url += `&${extra}`;
+      url += `?${extra}`;
     }
-    return request<{ success: boolean; data: any[]; nextCursor?: string | null }>(url, { ...options });
+    return request<{ success: boolean; data: any[]; nextCursor?: string | null; last_sync_timestamp?: string; is_delta?: boolean; count?: number }>(url, { ...options });
   },
 
   getDevice: (id: number | string) =>
@@ -505,6 +518,15 @@ export const api = {
     return res;
   },
 
+  getDeviceLocations: (deviceId: number | string, limit = 20) =>
+    request<{ success: boolean; data: any[] }>(`/devices/${encodeURIComponent(String(deviceId))}/locations?limit=${limit}`, { cacheTtl: 60 }),
+
+  getDeviceHistory: (deviceId: number | string, limit = 20) =>
+    request<{ success: boolean; data: any[] }>(`/devices/${encodeURIComponent(String(deviceId))}/history?limit=${limit}`, { cacheTtl: 60 }),
+
+  getDeviceImages: (deviceId: number | string) =>
+    request<{ success: boolean; data: any[] }>(`/devices/${encodeURIComponent(String(deviceId))}/images`, { cacheTtl: 60 }),
+
   addDeviceImage: (deviceId: number | string, data: { image_url: string; caption?: string; is_primary?: boolean }) =>
     request<{ success: boolean; message: string; data: any[] }>(`/devices/${encodeURIComponent(String(deviceId))}/images`, {
       method: 'POST',
@@ -524,7 +546,7 @@ export const api = {
   // Phase 3: Loops (Kh��p v��ng)
   getLoops: (params?: { search?: string; status?: string; substation_id?: string | number; feeder_id?: string | number }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: any[] }>(`/loops${query ? '?' + query : ''}`);
+    return request<{ success: boolean; data: any[]; nextCursor?: string }>(`/loops${query ? '?' + query : ''}`);
   },
 
   getLoop: (id: number | string, version_id?: number | string) => {
@@ -625,7 +647,7 @@ export const api = {
       if (params.search) cleanParams.search = params.search;
     }
     const query = new URLSearchParams(cleanParams).toString();
-    return request<{ success: boolean; data: any[] }>(`/approvals${query ? '?' + query : ''}`);
+    return request<{ success: boolean; data: any[]; nextCursor?: string }>(`/approvals${query ? '?' + query : ''}`);
   },
 
   reviewApproval: (id: number, action: 'APPROVED' | 'REJECTED' | 'REQUEST_INFO', review_notes?: string) =>
@@ -635,12 +657,12 @@ export const api = {
     }),
 
   // Phase 4: Tasks (C��ng vi���c & Giao vi���c)
-  getTasks: (params?: { search?: string; status?: string; priority?: string; device_id?: string | number; team?: string; assigned_to?: string | number; archived?: 'true' | 'false' | 'only' | 'all' | boolean | string }) => {
+  getTasks: (params?: { search?: string; status?: string; priority?: string; device_id?: string | number; team?: string; assigned_to?: string | number; archived?: 'true' | 'false' | 'only' | 'all' | boolean | string; limit?: number; lastDocId?: string }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
     return request<{ success: boolean; data: any[]; total: number; archived_count?: number }>(`/tasks${query ? '?' + query : ''}`);
   },
 
-  getMyTasks: (params?: { search?: string; status?: string; priority?: string; archived?: 'true' | 'false' | 'only' | 'all' | boolean | string }) => {
+  getMyTasks: (params?: { search?: string; status?: string; priority?: string; archived?: 'true' | 'false' | 'only' | 'all' | boolean | string; limit?: number; lastDocId?: string }) => {
     const query = params ? new URLSearchParams(params as Record<string, string>).toString() : '';
     return request<{ success: boolean; data: any[]; total?: number; archived_count?: number; active_count?: number }>(`/tasks/my-tasks${query ? '?' + query : ''}`);
   },
@@ -721,7 +743,7 @@ export const api = {
     }),
 
   getTaskHistory: (id: number | string) =>
-    request<{ success: boolean; data: any[] }>(`/tasks/${id}/history`),
+    request<{ success: boolean; data: any[]; nextCursor?: string }>(`/tasks/${id}/history`),
 
   deleteTask: (id: number | string) =>
     request<{ success: boolean; message: string }>(`/tasks/${id}`, {
@@ -731,11 +753,11 @@ export const api = {
   // Phase 4: Checklists (M���u ki���m tra)
   getChecklists: (params?: { search?: string; category?: string; target_device_type?: string }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: any[] }>(`/checklists${query ? '?' + query : ''}`, { cacheTtl: 21600 });
+    return request<{ success: boolean; data: any[]; nextCursor?: string }>(`/checklists${query ? '?' + query : ''}`, { cacheTtl: 21600 });
   },
 
   getChecklistPresets: () =>
-    request<{ success: boolean; data: any[] }>('/checklists/presets', { cacheTtl: 21600 }),
+    request<{ success: boolean; data: any[]; nextCursor?: string }>('/checklists/presets', { cacheTtl: 21600 }),
 
   syncEvnChecklists: () =>
     request<{ success: boolean; message: string }>('/checklists/sync-evn-templates', {
@@ -768,8 +790,10 @@ export const api = {
     }),
 
   // Phase 4: Inspection Schedules (Ki���m tra �����nh k���)
-  getSchedules: () =>
-    request<{ success: boolean; data: any[] }>('/schedules'),
+  getSchedules: (params?: { limit?: number; lastDocId?: string; device_id?: string | number; target_type?: string }) => {
+    const query = new URLSearchParams(params as Record<string, string>).toString();
+    return request<{ success: boolean; data: any[]; nextCursor?: string }>(`/schedules${query ? '?' + query : ''}`);
+  },
 
   createSchedule: (data: any) =>
     request<{ success: boolean; message: string; data: any }>('/schedules', {
@@ -794,9 +818,9 @@ export const api = {
     }),
 
   // Phase 4: Issues / Anomalies (B���t th�����ng)
-  getIssues: (params?: { search?: string; status?: string; severity?: string; device_id?: string | number }) => {
+  getIssues: (params?: { search?: string; status?: string; severity?: string; device_id?: string | number; limit?: number; lastDocId?: string }) => {
     const query = new URLSearchParams(params as Record<string, string>).toString();
-    return request<{ success: boolean; data: any[]; total: number }>(`/issues${query ? '?' + query : ''}`);
+    return request<{ success: boolean; data: any[]; total?: number; nextCursor?: string }>(`/issues${query ? '?' + query : ''}`);
   },
 
   getIssue: (id: number | string) =>
@@ -924,7 +948,7 @@ export const api = {
       body: JSON.stringify(data)
     }),
 
-  getProposals: (params?: { status?: string; type?: string; search?: string }) => {
+  getProposals: (params?: { status?: string; type?: string; search?: string; limit?: number; lastDocId?: string }) => {
     const cleanParams: Record<string, string> = {};
     if (params) {
       if (params.status) cleanParams.status = params.status;
@@ -932,7 +956,7 @@ export const api = {
       if (params.search) cleanParams.search = params.search;
     }
     const query = new URLSearchParams(cleanParams).toString();
-    return request<{ success: boolean; data: any[] }>(`/proposals${query ? '?' + query : ''}`);
+    return request<{ success: boolean; data: any[]; nextCursor?: string }>(`/proposals${query ? '?' + query : ''}`);
   },
 
   getMyProposals: (params?: { status?: string; type?: string; search?: string }) => {
@@ -943,7 +967,7 @@ export const api = {
       if (params.search) cleanParams.search = params.search;
     }
     const query = new URLSearchParams(cleanParams).toString();
-    return request<{ success: boolean; data: any[] }>(`/proposals/my-proposals${query ? '?' + query : ''}`);
+    return request<{ success: boolean; data: any[]; nextCursor?: string }>(`/proposals/my-proposals${query ? '?' + query : ''}`);
   },
 
   getProposal: (id: number | string) =>

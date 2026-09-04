@@ -101,7 +101,7 @@ export const TopologyDiagnosticsModal: React.FC<TopologyDiagnosticsModalProps> =
                   {report.loopCode}
                 </span>{' '}
                 {report.isValid ? (
-                  '• Cấu trúc 7 nút nguồn và liên kết đã hoàn toàn chính xác.'
+                  '• Cấu trúc nguồn và các liên kết đa nút đã hoàn toàn chính xác.'
                 ) : (
                   `• Có ${report.errorCount} điểm không phù hợp cần xử lý.`
                 )}
@@ -117,10 +117,10 @@ export const TopologyDiagnosticsModal: React.FC<TopologyDiagnosticsModalProps> =
           </button>
         </div>
 
-        {/* Standard 7-Node Flow Indicator */}
+        {/* Multi-Node Flow Indicator */}
         <div className="bg-slate-50 dark:bg-slate-950/60 px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 shadow-inner">
           <div className="text-[11px] font-black tracking-wider text-slate-500 dark:text-slate-400 uppercase mb-2">
-            Cấu trúc 7 Nút bắt buộc:
+            Cấu trúc Khép vòng Đa Nút Linh Hoạt (Multi-Node Sequence):
           </div>
           <div className="flex items-center flex-wrap gap-2 text-xs">
             <span className="px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
@@ -132,7 +132,7 @@ export const TopologyDiagnosticsModal: React.FC<TopologyDiagnosticsModalProps> =
             </span>
             <ArrowRight className="w-3 h-3 text-slate-400" />
             <span className="px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300">
-              Thiết bị A
+              [TB Đầu A...]
             </span>
             <ArrowRight className="w-3.5 h-3.5 text-amber-500 font-black animate-pulse" />
             {/* PROMINENT ĐIỂM DỪNG PHÁP LÝ BADGE */}
@@ -142,7 +142,7 @@ export const TopologyDiagnosticsModal: React.FC<TopologyDiagnosticsModalProps> =
             </span>
             <ArrowRight className="w-3.5 h-3.5 text-amber-500 font-black animate-pulse" />
             <span className="px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300">
-              Thiết bị B
+              [TB Đầu B...]
             </span>
             <ArrowRight className="w-3 h-3 text-slate-400" />
             <span className="px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">

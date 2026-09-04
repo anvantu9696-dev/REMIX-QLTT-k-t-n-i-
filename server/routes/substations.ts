@@ -176,7 +176,7 @@ router.put(
       } = req.body;
 
       if (!operationId) return res.status(400).json({ success: false, code: 'OPERATION_ID_REQUIRED' });
-      if (expectedVersion === undefined) return res.status(400).json({ success: false, code: 'EXPECTED_VERSION_REQUIRED' });
+      
 
       
           const substation = await substationRepo.getById(id);
@@ -190,7 +190,7 @@ router.put(
                   latitude: latitude ? parseFloat(latitude) : null,
                   longitude: longitude ? parseFloat(longitude) : null,
                   status
-              }, expectedVersion, operationId);
+              }, expectedVersion === undefined ? 1 : expectedVersion, operationId);
 
               recordAuditLog({
                 user_id: req.user!.id,

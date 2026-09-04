@@ -46,12 +46,14 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import { Task, TaskPriority, TaskStatus, Checklist, User as UserType, TaskHistory } from '../types';
 import { formatDateTime, formatRelativeTime, formatDate } from '../utils/dateTime';
 import { PrintChecklistModal } from '../components/PrintChecklistModal';
 
 export const TasksPage: React.FC = () => {
   const { user, hasRole } = useAuth();
+  const { devices, fetchDevices } = useDataContext();
   const [activeTab, setActiveTab] = useState<'all' | 'my' | 'archived'>('all');
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -91,7 +93,6 @@ export const TasksPage: React.FC = () => {
   const [pauseReasonInput, setPauseReasonInput] = useState<string>('');
 
   // Dropdown reference data
-  const [devices, setDevices] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<UserType[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
 
@@ -169,22 +170,22 @@ export const TasksPage: React.FC = () => {
       ]);
 
       if (allRes.success) {
-        setTasks(allRes.data);
+        setTasks(allRes.data || []);
         if (allRes.archived_count !== undefined) {
           setAllArchivedCount(allRes.archived_count);
         }
       }
       if (myRes.success) {
-        setMyTasks(myRes.data);
+        setMyTasks(myRes.data || []);
         if (myRes.archived_count !== undefined) {
           setMyArchivedCount(myRes.archived_count);
         }
       }
       if (myArchivedRes.success && allArchivedRes.success) {
         if (archivedScope === 'my') {
-          setArchivedTasks(myArchivedRes.data);
+          setArchivedTasks(myArchivedRes.data || []);
         } else {
-          setArchivedTasks(allArchivedRes.data);
+          setArchivedTasks(allArchivedRes.data || []);
         }
         setMyArchivedCount(myArchivedRes.data.length);
         setAllArchivedCount(allArchivedRes.data.length);
@@ -198,14 +199,13 @@ export const TasksPage: React.FC = () => {
 
   const loadRefData = async () => {
     try {
-      const [devRes, userRes, chkRes] = await Promise.all([
-        api.getDevices(),
+      fetchDevices();
+      const [userRes, chkRes] = await Promise.all([
         api.getAssignableUsers(),
         api.getChecklists()
       ]);
-      if (devRes.success) setDevices(devRes.data);
-      if (userRes.success) setUsersList(userRes.data);
-      if (chkRes.success) setChecklists(chkRes.data);
+      if (userRes.success) setUsersList(userRes.data || (userRes as any).users || []);
+      if (chkRes.success) setChecklists(chkRes.data || []);
     } catch (e) {
       console.error(e);
     }
@@ -319,9 +319,12 @@ export const TasksPage: React.FC = () => {
 
     setSubmitting(true);
     try {
+      const selectedUser = usersList.find((u) => String(u.id) === formAssignedUserId);
       const payload: any = {
         title: formTitle,
         assigned_to_user_id: formAssignedUserId ? formAssignedUserId : null,
+        assigned_to_username: selectedUser?.username || null,
+        assigned_to_fullname: selectedUser?.full_name || null,
         team: formTeam,
         checklist_id: formChecklistId ? formChecklistId : null,
         due_date: formDueDate,
@@ -1002,7 +1005,7 @@ export const TasksPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {currentList.map((t) => {
+          {(currentList || []).map((t) => {
             const isAssignee = checkIsAssignee(t);
             const isCreator = checkIsCreator(t);
             const isSupervisor = checkIsSupervisor();
@@ -1805,7 +1808,7 @@ export const TasksPage: React.FC = () => {
                   {/* CHECKLIST ITEMS & RESULTS */}
                   {selectedTask.task_devices && selectedTask.task_devices.length > 0 ? (
                     <div className="space-y-6 pt-2">
-                      {selectedTask.task_devices.map((td: any) => (
+                      {(selectedTask.task_devices || []).map((td: any) => (
                         <div key={td.id} className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
                           <div className="flex items-center justify-between">
                             <h4 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
@@ -1829,7 +1832,7 @@ export const TasksPage: React.FC = () => {
 
                           {td.checklist_items && td.checklist_items.length > 0 && (
                             <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-200">
-                              {td.checklist_items.map((item: any) => {
+                              {(td.checklist_items || []).map((item: any) => {
                                 const resKey = `${td.device_id}_${item.id}`;
                                 const resVal = itemResults[resKey] || { result_value: '', is_pass: true, notes: '' };
                                 const isEditable = checkIsAssignee(selectedTask) && ['IN_PROGRESS', 'ACCEPTED', 'RETURNED'].includes(selectedTask.status);
@@ -1990,13 +1993,13 @@ export const TasksPage: React.FC = () => {
                             <span>In Biên bản</span>
                           </button>
                           <span className="text-xs text-slate-500 font-medium">
-                            {selectedTask.checklist_items.length} tiêu chuẩn
+                            {selectedTask.checklist_items?.length || 0} tiêu chuẩn
                           </span>
                         </div>
                       </div>
 
                       <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-200">
-                        {selectedTask.checklist_items.map((item: any) => {
+                        {(selectedTask.checklist_items || []).map((item: any) => {
                           const resKeyLegacy = `legacy_${item.id}`;
                           const resVal = itemResults[`legacy_${item.id}`] || { result_value: '', is_pass: true, notes: '' };
                           const isEditable = checkIsAssignee(selectedTask) && ['IN_PROGRESS', 'ACCEPTED', 'RETURNED'].includes(selectedTask.status);
@@ -2152,7 +2155,7 @@ export const TasksPage: React.FC = () => {
                   </h4>
                   {selectedTask.history && selectedTask.history.length > 0 ? (
                     <div className="relative border-l-2 border-blue-200 ml-4 space-y-4 pl-4 py-2">
-                      {selectedTask.history.map((h: TaskHistory) => (
+                      {(selectedTask.history || []).map((h: TaskHistory) => (
                         <div key={h.id} className="relative group">
                           <div className="absolute -left-[23px] top-1.5 w-3 h-3 rounded-full bg-blue-600 border-2 border-white ring-2 ring-blue-100" />
                           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">

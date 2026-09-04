@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import {
   CheckSquare,
   Plus,
@@ -34,6 +35,7 @@ import { formatDateTime, formatDate } from '../utils/dateTime';
 
 export const ChecklistsPage: React.FC = () => {
   const { hasRole } = useAuth();
+  const { devices, fetchDevices } = useDataContext();
   const [activeTab, setActiveTab] = useState<'templates' | 'schedules'>('templates');
 
   // Checklists State
@@ -60,7 +62,6 @@ export const ChecklistsPage: React.FC = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // Ref Data
-  const [devices, setDevices] = useState<Device[]>([]);
   const [presets, setPresets] = useState<any[]>([]);
 
   // Checklist Form
@@ -128,8 +129,7 @@ export const ChecklistsPage: React.FC = () => {
 
   const loadDevices = async () => {
     try {
-      const res = await api.getDevices();
-      if (res.success) setDevices(res.data);
+      fetchDevices();
     } catch (e) {
       console.error(e);
     }

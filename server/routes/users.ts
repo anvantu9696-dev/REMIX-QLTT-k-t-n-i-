@@ -39,7 +39,7 @@ router.get('/assignable', requireRole(['ADMIN']), async (req: AuthenticatedReque
       .where('deleted_at', '==', null)
       .get();
     const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json({ success: true, users });
+    res.json({ success: true, data: users });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
   }
@@ -47,9 +47,9 @@ router.get('/assignable', requireRole(['ADMIN']), async (req: AuthenticatedReque
 
 router.get('/pending', requireRole(['ADMIN']), async (req: AuthenticatedRequest, res) => {
   try {
-    const snapshot = await getTargetFirestore().collection('users').where('status', '==', 'PENDING').where('deleted_at', '==', null).get();
+    const snapshot = await getTargetFirestore().collection('users').where('status', '==', 'PENDING').where('deleted_at', '==', null).limit(100).get();
     const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json({ success: true, users });
+    res.json({ success: true, data: users });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
   }
@@ -115,7 +115,7 @@ router.get('/', requireRole(['ADMIN']), async (req: AuthenticatedRequest, res) =
     if (status) query = query.where('status', '==', status);
     if (role) query = query.where('role', '==', role);
     
-    const snapshot = await query.get();
+    const snapshot = await query.limit(Number(req.query.limit) || 200).get();
     let users = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
     
     if (search) {
@@ -128,7 +128,7 @@ router.get('/', requireRole(['ADMIN']), async (req: AuthenticatedRequest, res) =
       );
     }
     
-    res.json({ success: true, users, total: users.length });
+    res.json({ success: true, data: users, total: users.length });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
   }
@@ -138,7 +138,7 @@ router.get('/:id', requireRole(['ADMIN']), async (req: AuthenticatedRequest, res
   try {
     const user = await findUserById(req.params.id);
     if (!user || (user as any).deleted_at) return res.status(404).json({ success: false, message: 'User not found' });
-    res.json({ success: true, user });
+    res.json({ success: true, data: user });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Zap,
   Building2,
@@ -25,9 +25,24 @@ import {
   UserCheck,
   ShieldAlert,
   Inbox,
-  AlertCircle
+  AlertCircle,
+  PieChart as PieChartIcon,
+  BarChart3
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid
+} from 'recharts';
 import { useAuth } from '../context/AuthContext';
+import { useDataContext } from '../context/DataContext';
 import { api } from '../lib/api';
 import { DashboardStats, AuditLog, Task } from '../types';
 import { formatDateTime, formatRelativeTime } from '../utils/dateTime';
@@ -51,12 +66,119 @@ interface CriticalDeviceItem {
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   const { user, isGuest, hasRole } = useAuth();
+  const { devices, substations, feeders } = useDataContext();
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentAudits, setRecentAudits] = useState<AuditLog[]>([]);
   const [pendingApprovalTasks, setPendingApprovalTasks] = useState<Task[]>([]);
   const [activityTab, setActivityTab] = useState<'pending' | 'audit'>('pending');
-  const [criticalDevices, setCriticalDevices] = useState<CriticalDeviceItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Dynamic counts derived from DataContext cache
+  const totalEquipmentCount = stats?.total_equipment ?? 0;
+  const totalSubstationsCount = stats?.total_stations_110kv ?? 0;
+  const totalFeedersCount = stats?.total_feeders ?? 0;
+
+  // Dynamic Critical Devices derived from DataContext cache
+  const criticalDevices = useMemo<CriticalDeviceItem[]>(() => {
+    if (!devices || devices.length === 0) return [];
+
+    const abnormalDevs = devices.filter((d) =>
+      d.status === 'INACTIVE' ||
+      d.status === 'MAINTENANCE' ||
+      d.scada_status === 'NO_SIGNAL' ||
+      d.battery_status === 'WEAK' ||
+      d.battery_status === 'BROKEN'
+    );
+
+    return abnormalDevs.map((d) => ({
+      id: d.id,
+      name: d.name || `Thiết bị ${d.device_id}`,
+      device_id: d.device_id || `DEV-${d.id}`,
+      device_type: d.device_type || 'RECLOSER',
+      pole_number: d.pole_number || `Trụ ${d.id}`,
+      feeder_name: d.feeder_name || 'Phát tuyến',
+      substation_name: d.substation_name || 'Trạm 110kV',
+      status: d.status === 'MAINTENANCE'
+        ? 'BẢO TRÌ'
+        : d.scada_status === 'NO_SIGNAL'
+          ? 'MẤT SCADA'
+          : d.battery_status === 'WEAK'
+            ? 'PIN YẾU'
+            : 'BẤT THƯỜNG',
+      severity: (d.status === 'MAINTENANCE' ? 'MAINTENANCE' : 'CRITICAL') as 'MAINTENANCE' | 'CRITICAL'
+    })).slice(0, 5);
+  }, [devices]);
+
+  // Pie Chart Data: Device Types Distribution
+  const deviceTypeData = useMemo(() => {
+    if (!devices || devices.length === 0) return [];
+
+    const counts: Record<string, number> = {};
+    devices.forEach((d) => {
+      const type = (d.device_type || 'OTHER').toUpperCase();
+      counts[type] = (counts[type] || 0) + 1;
+    });
+
+    const typeLabels: Record<string, string> = {
+      'REC': 'Recloser (REC)',
+      'RCL': 'Recloser (RCL)',
+      'LBS': 'Dao cắt phụ tải (LBS)',
+      'RMU': 'Tủ RMU',
+      'DS': 'Dao cách ly (DS)',
+      'FCO': 'Cầu chì (FCO)',
+      'OTHER': 'Loại khác'
+    };
+
+    const colors: Record<string, string> = {
+      'REC': '#3B82F6',
+      'RCL': '#2563EB',
+      'LBS': '#10B981',
+      'RMU': '#8B5CF6',
+      'DS': '#F59E0B',
+      'FCO': '#EC4899',
+      'OTHER': '#64748B'
+    };
+
+    return Object.keys(counts).map((key) => ({
+      name: typeLabels[key] || key,
+      value: counts[key],
+      color: colors[key] || '#06B6D4'
+    }));
+  }, [devices]);
+
+  // Bar Chart Data: Device Status Distribution
+  const deviceStatusData = useMemo(() => {
+    if (!devices || devices.length === 0) return [];
+
+    let activeCount = 0;
+    let maintenanceCount = 0;
+    let inactiveCount = 0;
+    let scadaNoSignalCount = 0;
+
+    devices.forEach((d) => {
+      if (d.status === 'ACTIVE') {
+        activeCount++;
+      } else if (d.status === 'MAINTENANCE') {
+        maintenanceCount++;
+      } else if (d.status === 'INACTIVE') {
+        inactiveCount++;
+      } else {
+        activeCount++;
+      }
+
+      if (d.scada_status === 'NO_SIGNAL') {
+        scadaNoSignalCount++;
+      }
+    });
+
+    return [
+      { name: 'Đang vận hành', count: activeCount, fill: '#10B981' },
+      { name: 'Bảo trì', count: maintenanceCount, fill: '#3B82F6' },
+      { name: 'Tạm ngưng / Cắt', count: inactiveCount, fill: '#F59E0B' },
+      { name: 'Mất SCADA', count: scadaNoSignalCount, fill: '#EF4444' },
+    ];
+  }, [devices]);
 
   useEffect(() => {
     loadDashboardData();
@@ -87,44 +209,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         if (auditRes.success) {
           setRecentAudits(auditRes.data);
         }
-      }
-
-      // Load devices to populate the "Thiết bị cần xử lý ngay" table
-      try {
-        const devRes = await api.getDevices();
-        if (devRes.success && Array.isArray(devRes.data)) {
-          // Filter or pick devices with issues, maintenance, or high priority
-          const allDevs = devRes.data;
-          const abnormalDevs = allDevs.filter((d: any) => 
-            d.status === 'INACTIVE' || 
-            d.status === 'MAINTENANCE' || 
-            d.scada_status === 'NO_SIGNAL' ||
-            d.battery_status === 'WEAK' || 
-            d.battery_status === 'BROKEN'
-          );
-
-          const displayList: CriticalDeviceItem[] = abnormalDevs.map((d: any) => ({
-            id: d.id,
-            name: d.name || `Thiết bị ${d.device_id}`,
-            device_id: d.device_id || `DEV-${d.id}`,
-            device_type: d.device_type || 'RECLOSER',
-            pole_number: d.pole_number || `Trụ ${d.id}/ĐZ`,
-            feeder_name: d.feeder_name || '471 E1.1',
-            substation_name: d.substation_name || '110kV Đông Hà',
-            status: d.status === 'MAINTENANCE' 
-              ? 'BẢO TRÌ' 
-              : d.scada_status === 'NO_SIGNAL' 
-                ? 'MẤT SCADA' 
-                : d.battery_status === 'WEAK' 
-                  ? 'PIN YẾU' 
-                  : 'BẤT THƯỜNG',
-            severity: d.status === 'MAINTENANCE' ? 'MAINTENANCE' : 'CRITICAL'
-          }));
-
-          setCriticalDevices(displayList.slice(0, 5));
-        }
-      } catch (err) {
-        console.warn('Failed to load critical devices list:', err);
       }
     } catch (e) {
       console.error(e);
@@ -172,7 +256,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     }
   };
 
-  const pendingCount = pendingApprovalTasks.length;
+  const pendingCount = stats?.pending_approval_tasks ?? pendingApprovalTasks.length;
 
   return (
     <div className="space-y-6">
@@ -292,7 +376,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="mt-3">
             <div className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-mono">
-              {stats?.total_equipment ?? 0}
+              {totalEquipmentCount}
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
               <span>Đang quản lý trên lưới</span>
@@ -318,7 +402,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="mt-3">
             <div className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-mono">
-              {stats?.total_stations_110kv ?? 0}
+              {totalSubstationsCount}
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold">100% vận hành</span>
@@ -344,7 +428,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="mt-3">
             <div className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-mono">
-              {stats?.total_feeders ?? 0}
+              {totalFeedersCount}
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
               <span>Trung áp 22/35kV</span>
@@ -379,6 +463,135 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               </span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Interactive Charts Section: Pie Chart & Bar Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Pie Chart: Distribution by Device Type */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <PieChartIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                Tỉ Lệ Thiết Bị Theo Phân Loại (device_type)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Thống kê tỉ lệ phân bổ REC, LBS, RMU, DS, FCO trên lưới điện
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2.5 py-1 rounded-lg border border-blue-200/60 dark:border-blue-900/60 shrink-0">
+              {totalEquipmentCount} thiết bị
+            </span>
+          </div>
+
+          {deviceTypeData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-xs text-slate-400">
+              Đang tải dữ liệu biểu đồ...
+            </div>
+          ) : (
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={deviceTypeData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={4}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    labelLine={false}
+                  >
+                    {deviceTypeData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0];
+                        const total = totalEquipmentCount || 1;
+                        const val = data.value as number;
+                        return (
+                          <div className="bg-slate-900 text-white p-2.5 rounded-xl text-xs shadow-xl border border-slate-700">
+                            <p className="font-bold">{data.name}</p>
+                            <p className="text-sky-400 font-mono mt-1">
+                              Số lượng: <span className="font-bold text-white">{val}</span> ({((val / total) * 100).toFixed(1)}%)
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Bar Chart: Distribution by Device Status */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                Số Lượng Thiết Bị Theo Trạng Thái (status)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Biểu đồ cột theo dõi Vận hành, Bảo trì, Tạm ngưng và Cảnh báo SCADA
+              </p>
+            </div>
+          </div>
+
+          {deviceStatusData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-xs text-slate-400">
+              Đang tải dữ liệu biểu đồ...
+            </div>
+          ) : (
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={deviceStatusData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.15} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11, fill: '#64748B' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: '#64748B' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900 text-white p-2.5 rounded-xl text-xs shadow-xl border border-slate-700">
+                            <p className="font-bold">{data.name}</p>
+                            <p className="text-emerald-400 font-mono mt-1">
+                              Số lượng: <span className="font-bold text-white">{data.count}</span> thiết bị
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                    {deviceStatusData.map((entry, index) => (
+                      <Cell key={`bar-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       </div>
 
@@ -753,12 +966,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                         </div>
                       ))}
 
-                      {pendingApprovalTasks.length > 4 && (
+                      {pendingCount > 4 && (
                         <button
                           onClick={() => onNavigate('/tasks?status=PENDING_APPROVAL')}
                           className="w-full py-2 text-center text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 rounded-lg border border-dashed border-amber-300 dark:border-amber-800 transition cursor-pointer"
                         >
-                          Xem thêm {pendingApprovalTasks.length - 4} công việc chờ xác nhận khác →
+                          Xem thêm {pendingCount - 4} công việc chờ xác nhận khác →
                         </button>
                       )}
                     </div>

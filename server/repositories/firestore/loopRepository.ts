@@ -47,7 +47,7 @@ export const loopRepo = {
     const db = getTargetFirestore();
     let query = db.collection('loops').where('isDeleted', '==', false);
     
-    const limit = options?.limit || 500;
+    const limit = options?.limit || 50;
     if (limit) {
       query = query.limit(limit);
       
@@ -132,6 +132,15 @@ export const loopRepo = {
         const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Loop;
         setCached(cacheKey, data, 45000);
         return data;
+      }
+    }
+
+    // 5. Fallback to first available active non-deleted loop
+    const all = await this.list();
+    if (all && all.length > 0) {
+      const activeLoop = all.find(l => !l.isDeleted);
+      if (activeLoop) {
+        return activeLoop;
       }
     }
 

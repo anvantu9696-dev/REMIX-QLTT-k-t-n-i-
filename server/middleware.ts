@@ -1,7 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { getTargetFirestore, getTargetAuth } from './firebaseAdmin.js';
-import { getCached, setCached, logCacheHit } from './utils/firestoreCache';
+import { getCached, setCached, invalidateKey, TTL_USER_PROFILE, logCacheHit } from './utils/firestoreCache';
 import { auditLogRepo } from './repositories/firestore/auditLogRepository.js';
+
+export function invalidateUserCache(uid: string): void {
+  if (uid) {
+    invalidateKey(`user_profile_${uid}`);
+  }
+}
 
 export interface AuthenticatedUser {
   id: string | number;
@@ -57,7 +63,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
         }
         userRow = doc.data();
         userRow.id = doc.id;
-        setCached(cacheKey, userRow, 60000); // 60 seconds TTL
+        setCached(cacheKey, userRow, TTL_USER_PROFILE, 'users'); // 15 mins (900,000 ms)
     }
 
     if (userRow.status === 'PENDING') {

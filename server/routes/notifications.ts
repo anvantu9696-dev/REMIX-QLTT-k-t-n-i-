@@ -27,7 +27,7 @@ router.get('/', async (req: AuthenticatedRequest, res) => {
     // Or just rely on Firestore indexes being created.
     q = q.orderBy('created_at', 'desc').limit(pageSize);
 
-    const snapshot = await q.get();
+    const snapshot = await q.limit(Number(req.query.limit) || 100).get();
     let notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // Unread count

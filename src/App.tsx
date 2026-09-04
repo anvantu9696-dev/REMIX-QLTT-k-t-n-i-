@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { clearAllCache } from './lib/idbCache';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { DataProvider } from './context/DataContext';
 import { AppLayout } from './components/layout/AppLayout';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { LoginPage } from './pages/LoginPage';
@@ -202,7 +203,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <PendingGuard><AppContent /></PendingGuard>
+        <DataProvider>
+          <PendingGuard><AppContent /></PendingGuard>
+        </DataProvider>
       </AuthProvider>
     </ThemeProvider>
   );

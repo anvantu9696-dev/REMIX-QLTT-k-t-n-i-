@@ -9,12 +9,24 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [guestLoading, setGuestLoading] = useState(false);
 
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setEmailError('Vui lòng nhập đúng định dạng email');
+      return false;
+    }
+    setEmailError(null);
+    return true;
+  };
+
   const handleGuestLogin = async () => {
     setError(null);
+    setEmailError(null);
     setGuestLoading(true);
     try {
       const res = await guestLogin();
@@ -31,6 +43,12 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setEmailError(null);
+
+    if (!validateEmail(email)) {
+      return;
+    }
+
     setLoading(true);
     
     try {
@@ -39,7 +57,11 @@ export const LoginPage: React.FC = () => {
         if (res.success) {
           // App.tsx will automatically re-render when user is populated
         } else {
-          setError(res.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.');
+          if (res.message && (res.message === 'auth/invalid-credential' || res.message.includes('auth/invalid-credential'))) {
+            setError('Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.');
+          } else {
+            setError(res.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.');
+          }
         }
       } else {
         if (!fullName.trim()) {
@@ -57,7 +79,11 @@ export const LoginPage: React.FC = () => {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Có lỗi xảy ra.');
+      if (err.code === 'auth/invalid-credential') {
+        setError('Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.');
+      } else {
+        setError(err.message || 'Có lỗi xảy ra.');
+      }
     } finally {
       setLoading(false);
     }
@@ -133,10 +159,16 @@ export const LoginPage: React.FC = () => {
                   type="email"
                   required
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                  onChange={e => {
+                    setEmail(e.target.value);
+                    if (emailError) validateEmail(e.target.value);
+                  }}
+                  className={`appearance-none block w-full px-4 py-3 border ${emailError ? 'border-red-300' : 'border-slate-300'} rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow`}
                   placeholder="admin@example.com"
                 />
+                {emailError && (
+                  <p className="mt-1 text-xs text-red-600">{emailError}</p>
+                )}
               </div>
             </div>
 

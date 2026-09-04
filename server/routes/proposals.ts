@@ -8,7 +8,7 @@ router.use(authenticateToken);
 router.use(denyGuestMutations);
 
 function isManagerOrAdmin(user: any) {
-  return user.roles.includes('ADMIN') || user.roles.includes('MANAGER');
+  return user && user.roles && (user.roles.includes('ADMIN') || user.roles.includes('MANAGER'));
 }
 
 // Helper: Record proposal history
@@ -42,41 +42,157 @@ async function recordProposalHistory(
 
 // GET /api/proposals - List all proposals (with filters)
 router.get('/', async (req: AuthenticatedRequest, res) => {
-  const { status, type, search } = req.query;
+  const { status, type, limit = '50', lastDocId, search } = req.query;
   try {
     const db = getTargetFirestore();
     let query: any = db.collection('proposals').where('deleted_at', '==', null);
+    if (status && status !== 'ALL') query = query.where('status', '==', status);
+    if (type && type !== 'ALL') query = query.where('type', '==', type);
 
-    if (status) {
-      query = query.where('status', '==', status);
-    }
-    if (type) {
-      query = query.where('type', '==', type);
-    }
-
-    // Role-based visibility:
-    // If not MANAGER/ADMIN, only see own proposals (or those assigned to their department/station if we had that, but for now just their own)
     const isStaff = !isManagerOrAdmin(req.user) && req.user!.roles.includes('STAFF');
     if (isStaff) {
       query = query.where('created_by', '==', req.user!.username);
     }
 
-    const snapshot = await query.get();
+    query = query.orderBy('created_at', 'desc');
+
+    let parsedLimit = parseInt(limit as string, 10) || 50;
+    
+    if (lastDocId) {
+      const lastDoc = await db.collection('proposals').doc(lastDocId as string).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+
+    const snapshot = await query.limit(parsedLimit + 1).get();
     let proposals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    if (search) {
-      const s = (search as string).toLowerCase();
-      proposals = proposals.filter((p: any) => 
-        (p.title || '').toLowerCase().includes(s) || 
-        (p.proposal_code || '').toLowerCase().includes(s)
+    if (search && typeof search === 'string' && search.trim()) {
+      const term = search.toLowerCase().trim();
+      proposals = proposals.filter((p: any) =>
+        (p.title && p.title.toLowerCase().includes(term)) ||
+        (p.proposal_code && p.proposal_code.toLowerCase().includes(term)) ||
+        (p.description && p.description.toLowerCase().includes(term))
       );
     }
 
-    proposals.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-    res.json({ success: true, data: proposals });
+    const hasMore = proposals.length > parsedLimit;
+    if (hasMore) {
+      proposals.pop();
+    }
+
+    res.json({ success: true, data: proposals, nextCursor: hasMore ? proposals[proposals.length - 1].id : undefined });
   } catch (err: any) {
     console.error('Error fetching proposals:', err);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
+  }
+});
+
+// GET /api/proposals/my-proposals - List proposals of current user (Must be BEFORE /:id)
+router.get('/my-proposals', async (req: AuthenticatedRequest, res) => {
+  const { status, type, limit = '50', lastDocId, search } = req.query;
+  try {
+    const db = getTargetFirestore();
+    let query: any = db.collection('proposals')
+      .where('deleted_at', '==', null)
+      .where('created_by', '==', req.user!.username);
+
+    if (status && status !== 'ALL') query = query.where('status', '==', status);
+    if (type && type !== 'ALL') query = query.where('type', '==', type);
+
+    query = query.orderBy('created_at', 'desc');
+
+    let parsedLimit = parseInt(limit as string, 10) || 50;
+
+    if (lastDocId) {
+      const lastDoc = await db.collection('proposals').doc(lastDocId as string).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+
+    const snapshot = await query.limit(parsedLimit + 1).get();
+    let proposals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const term = search.toLowerCase().trim();
+      proposals = proposals.filter((p: any) =>
+        (p.title && p.title.toLowerCase().includes(term)) ||
+        (p.proposal_code && p.proposal_code.toLowerCase().includes(term)) ||
+        (p.description && p.description.toLowerCase().includes(term))
+      );
+    }
+
+    const hasMore = proposals.length > parsedLimit;
+    if (hasMore) {
+      proposals.pop();
+    }
+
+    res.json({ success: true, data: proposals, nextCursor: hasMore ? proposals[proposals.length - 1].id : undefined });
+  } catch (err: any) {
+    console.error('Error fetching my proposals:', err);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
+  }
+});
+
+// POST /api/proposals/check-duplicate - Check duplicate proposals/devices (Must be BEFORE /:id)
+router.post('/check-duplicate', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { device_id, name, pole_number } = req.body;
+    const db = getTargetFirestore();
+
+    let matchedDevices: any[] = [];
+    let matchedProposals: any[] = [];
+
+    // Check existing devices
+    if (name || pole_number) {
+      const devicesSnap = await db.collection('devices').get();
+      devicesSnap.docs.forEach(doc => {
+        const d = doc.data();
+        if (
+          (name && d.name && d.name.toLowerCase() === String(name).toLowerCase()) ||
+          (pole_number && d.pole_number && d.pole_number.toLowerCase() === String(pole_number).toLowerCase())
+        ) {
+          matchedDevices.push({ id: doc.id, ...d });
+        }
+      });
+    }
+
+    // Check pending proposals
+    const proposalsSnap = await db.collection('proposals')
+      .where('deleted_at', '==', null)
+      .where('status', 'in', ['DRAFT', 'PENDING', 'PENDING_APPROVAL'])
+      .get();
+
+    proposalsSnap.docs.forEach(doc => {
+      const p = doc.data();
+      if (
+        (name && p.title && p.title.toLowerCase().includes(String(name).toLowerCase())) ||
+        (pole_number && p.description && p.description.toLowerCase().includes(String(pole_number).toLowerCase()))
+      ) {
+        matchedProposals.push({ id: doc.id, ...p });
+      }
+    });
+
+    const isDuplicate = matchedDevices.length > 0 || matchedProposals.length > 0;
+    let warningMessage = '';
+    if (matchedDevices.length > 0) {
+      warningMessage = `Tìm thấy ${matchedDevices.length} thiết bị trùng tên/mã cột`;
+    } else if (matchedProposals.length > 0) {
+      warningMessage = `Tìm thấy ${matchedProposals.length} đề xuất đang xử lý có nội dung tương tự`;
+    }
+
+    res.json({
+      success: true,
+      is_duplicate: isDuplicate,
+      warning_message: warningMessage,
+      matched_devices: matchedDevices,
+      matched_proposals: matchedProposals
+    });
+  } catch (err: any) {
+    console.error('Error checking duplicate proposal:', err);
+    res.status(500).json({ success: false, message: 'Lỗi kiểm tra trùng lặp' });
   }
 });
 
@@ -277,6 +393,64 @@ router.post('/:id/submit', async (req: AuthenticatedRequest, res) => {
 
     res.json({ success: true, message: 'Đã gửi trình duyệt' });
   } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
+  }
+});
+
+// POST /api/proposals/:id/review - Review proposal (APPROVED / REJECTED)
+router.post('/:id/review', async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!isManagerOrAdmin(req.user)) {
+      return res.status(403).json({ success: false, message: 'Chỉ Lãnh đạo/Quản trị viên mới có quyền phê duyệt đề xuất' });
+    }
+
+    const { action, review_notes } = req.body;
+    if (!['APPROVED', 'REJECTED'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Hành động không hợp lệ' });
+    }
+
+    const id = req.params.id;
+    const db = getTargetFirestore();
+    const ref = db.collection('proposals').doc(id);
+    const doc = await ref.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy đề xuất' });
+    }
+    const data = doc.data() as any;
+    if (data.deleted_at) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy đề xuất' });
+    }
+
+    const newStatus = action === 'APPROVED' ? 'APPROVED' : 'REJECTED';
+    await ref.update({
+      status: newStatus,
+      reviewed_by: req.user!.username,
+      reviewed_by_fullname: req.user!.full_name,
+      reviewed_at: new Date().toISOString(),
+      review_notes: review_notes || '',
+      updated_at: new Date().toISOString()
+    });
+
+    await recordProposalHistory(
+      id,
+      req.user,
+      action === 'APPROVED' ? 'PHE_DUYET' : 'TU_CHOI',
+      action === 'APPROVED' ? 'Phê duyệt' : 'Từ chối',
+      data.status,
+      newStatus,
+      review_notes || (action === 'APPROVED' ? 'Đã phê duyệt đề xuất' : 'Đã từ chối đề xuất')
+    );
+
+    broadcastRealtimeEvent({ type: 'UPDATE', entity: 'PROPOSAL', action: 'STATUS', id, data: { status: newStatus } });
+
+    res.json({
+      success: true,
+      message: action === 'APPROVED' ? 'Phê duyệt đề xuất thành công' : 'Từ chối đề xuất thành công',
+      data: { id, status: newStatus }
+    });
+  } catch (err: any) {
+    console.error('Error reviewing proposal:', err);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
   }
 });
